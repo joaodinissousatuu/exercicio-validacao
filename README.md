@@ -127,6 +127,7 @@ Duas correções feitas depois de uma primeira revisão do backend:
 
 ## Se tivesses mais tempo
 
+- **Autenticação real**: numa aplicação em produção, substituiria o utilizador fixo por um sistema de contas a sério — registo, palavras-passe com hash (nunca em texto simples), e sessão/token para manter o login entre pedidos. Não o fiz aqui porque o próprio enunciado desaconselha investir tempo nisso, e o foco do exercício está na regra de conflito de horários.
 - **Concorrência**: a verificação de conflito faz leitura e escrita sem qualquer tipo de bloqueio — em teoria, dois pedidos de aceitação em simultâneo, para reuniões que se sobrepõem, poderiam ambos passar a verificação antes de qualquer um gravar o resultado. Resolveria isto com uma transação do MongoDB.
 - **Distribuição do projeto**: adicionaria um `docker-compose.yml` com uma instância local do MongoDB, para quem for avaliar isto não depender das minhas credenciais pessoais do Atlas.
 - **Pequena duplicação no frontend**: `MeetingCard.jsx` e `MeetingDetailModal.jsx` definem, cada um, o mesmo objeto de cores/etiquetas para os estados dos convites — extraía isso para um único sítio partilhado.
