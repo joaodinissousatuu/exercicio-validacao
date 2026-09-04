@@ -136,8 +136,8 @@ Duas correções feitas depois de uma primeira revisão do backend:
 
 ## Ferramentas de IA
 
-Usei o **Claude Code** (aplicação desktop e extensão do VS Code) ao longo de todo o processo, mas com uma divisão clara: as decisões de arquitetura, modelo de dados e regras de negócio foram discutidas e fechadas por mim antes de qualquer código ser escrito, documentadas em `SPEC.md` e `FRONTEND_SPEC.md` — a IA implementou a partir dessas decisões, não decidiu por mim.
+Usei o **Claude Code** (aplicação desktop e extensão do VS Code) ao longo de todo o processo, mas com uma divisão clara: as decisões de arquitetura, modelo de dados e regras de negócio foram discutidas e fechadas por mim antes de qualquer código ser escrito, documentadas em `SPEC.md` e `FRONTEND_SPEC.md` — a IA implementou a partir dessas decisões.
 
-Usei-a também para me explicar conceitos que desconhecia por completo (React, Node.js, Express, HTTP, Mongoose), já que não tinha nenhuma experiência prévia em JavaScript.
+Usei-a também para me explicar conceitos que desconhecia por completo (React, Node.js, Express, HTTP, Mongoose), já que não tinha experiência relevante nestas tecnologias.
 
 Um exemplo concreto de revisão que fiz ao código gerado: identifiquei, com apoio da IA, que a regra de conflito de horários só estava a ser verificada no momento de aceitar um convite (`PATCH /invites`), mas não quando o próprio organizador é automaticamente aceite na reunião que cria (`POST /meetings`) — o que permitia, na prática, criar duas reuniões próprias que se sobrepunham sem nenhum aviso. Corrigi isto aplicando a mesma verificação também nesse ponto.
