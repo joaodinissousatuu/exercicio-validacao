@@ -1,28 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { getMeeting } from '../api/meetings.js';
 
 export function useMeeting(id) {
-  const [meeting, setMeeting] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['meeting', id],
+    queryFn: () => getMeeting(id),
+    enabled: !!id,
+  });
 
-  const refetch = useCallback(async () => {
-    if (!id) return;
-    setLoading(true);
-    setError(null);
-    setMeeting(null);
-    try {
-      setMeeting(await getMeeting(id));
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
-
-  return { meeting, loading, error, refetch };
+  return { meeting: data ?? null, loading: isLoading, error: error?.message ?? null, refetch };
 }

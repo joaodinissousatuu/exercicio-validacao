@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Group, Stack, Tabs, Title } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useMeetings } from '../hooks/useMeetings.js';
-import { respondToInvite } from '../api/meetings.js';
+import { useRespondToInvite } from '../hooks/useRespondToInvite.js';
 import { FIXED_USER_ID } from '../constants.js';
 import { MeetingCard } from './MeetingCard.jsx';
 import { EmptyState, ErrorState, LoadingState } from './RequestState.jsx';
@@ -15,6 +15,7 @@ function isMyPending(meeting) {
 
 export function MeetingsScreen() {
   const { meetings, loading, error, refetch } = useMeetings();
+  const respondMutation = useRespondToInvite();
   const [createOpen, setCreateOpen] = useState(false);
   const [openMeetingId, setOpenMeetingId] = useState(null);
   const [respondingMeetingId, setRespondingMeetingId] = useState(null);
@@ -37,8 +38,7 @@ export function MeetingsScreen() {
     setRespondingMeetingId(meeting._id);
     setRespondingStatus(status);
     try {
-      await respondToInvite(meeting._id, FIXED_USER_ID, status);
-      await refetch();
+      await respondMutation.mutateAsync({ meetingId: meeting._id, userId: FIXED_USER_ID, status });
     } catch (err) {
       notifications.show({
         color: 'red',
@@ -99,7 +99,6 @@ export function MeetingsScreen() {
         onClose={() => setCreateOpen(false)}
         onCreated={() => {
           setCreateOpen(false);
-          refetch();
         }}
       />
 

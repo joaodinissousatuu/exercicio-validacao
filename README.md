@@ -60,10 +60,11 @@ Abrir http://localhost:5173 no browser.
 
 ## Decisões técnicas
 
-> As secções abaixo descrevem a entrega inicial. Algumas foram atualizadas depois, em
-> resposta a feedback de revisão — nomeadamente a extração do componente `StatusBadge`
-> partilhado, e a reestruturação do backend com padrões de Domain-Driven Design (ver
-> "Arquitetura do backend" abaixo).
+> As secções abaixo descrevem a entrega inicial. Algumas foram atualizadas depois, após
+> feedback de revisão: a extração do componente `StatusBadge` partilhado, a
+> reestruturação do backend com padrões de Domain-Driven Design ("Arquitetura do backend"
+> abaixo), e a adoção do React Query com separação de lógica de formulário no frontend
+> ("Stack do frontend" abaixo).
 
 ### Autenticação
 
@@ -105,9 +106,16 @@ O `GET /meetings` devolve, para cada reunião com o convite `pending`, um campo 
 
 ### Stack do frontend
 
-`React` + `Vite` + `Mantine` (biblioteca de componentes, para não escrever CSS à mão). A comunicação com a API é feita com `fetch` simples, envolvido em pequenos hooks próprios por recurso (`useMeetings`, `useMeeting`, `useUserSearch`) — sem bibliotecas maiores de data-fetching (como `React Query`), para manter a curva de aprendizagem baixa, consistente com a decisão de não adotar `TypeScript` completo no backend.
+`React` + `Vite` + `Mantine` (biblioteca de componentes, para não escrever CSS à mão).
 
 A interface tem um único ecrã de reuniões, com separadores "Pendentes" e "Todas", em vez de páginas separadas — reduz a estrutura (uma rota, um fetch, um conjunto de estados de loading/vazio/erro) sem perder a distinção entre "o que precisa da minha ação" e "o histórico completo".
+
+**Gestão de dados: React Query (atualizado pós-feedback).** A entrega inicial usava `fetch` simples com hooks manuais (`useState`/`useEffect`), para manter a curva de aprendizagem baixa. Feedback de revisão apontou a ausência de uma solução de state management/data-fetching, e a lógica de loading/erro/refetch estava misturada dentro dos componentes — os dois problemas resolvidos ao mesmo tempo pelo `@tanstack/react-query`:
+- `useMeetings`, `useMeeting`, `useUserSearch` mantêm os mesmos nomes e forma de uso, mas por dentro usam `useQuery` — cache, revalidação e deduplicação de pedidos de raiz.
+- Aceitar/recusar convite e criar reunião passam a `useMutation`, invalidando a query `['meetings']` no sucesso em vez de `refetch()` manuais.
+- `api/meetings.js`, `api/users.js` e `apiFetch.js` ficaram inalterados — o React Query usa-os tal como estão.
+
+**Separação de lógica e UI (atualizado pós-feedback).** A validação e gestão de campos do formulário de criar reunião, antes misturada com o JSX do `CreateMeetingModal.jsx`, está agora isolada num hook próprio (`useCreateMeetingForm`) — o componente ficou reduzido a apresentação.
 
 ### CORS e tratamento de erros assíncronos
 
