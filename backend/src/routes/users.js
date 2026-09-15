@@ -1,5 +1,5 @@
 import express from 'express';
-import { User } from '../models/User.js';
+import { userRepository } from '../repositories/userRepository.js';
 
 export const usersRouter = express.Router();
 
@@ -7,8 +7,6 @@ export const usersRouter = express.Router();
 // Sem q, devolve todos (a lista de utilizadores é pequena — sem paginação, fora do MVP).
 usersRouter.get('/', async (req, res) => {
   const q = (req.query.q ?? '').trim();
-
-  const filter = q ? { username: { $regex: q, $options: 'i' } } : {};
-  const users = await User.find(filter);
+  const users = await userRepository.search(q);
   res.json(users);
 });

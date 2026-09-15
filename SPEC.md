@@ -105,7 +105,8 @@ backend/src/
 │   └── conflictService.js   ← regra de negócio, sem HTTP nem Mongoose
 ├── repositories/
 │   ├── meetingRepository.js ← esconde as queries Mongoose
-│   └── userRepository.js
+│   ├── userRepository.js
+│   └── objectId.js          ← isValidId partilhado (evita duplicação entre os dois repositórios)
 ├── models/                   ← inalterado
 ├── middleware/                ← inalterado
 ├── routes/                    ← passam a "controladores finos"
