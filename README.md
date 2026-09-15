@@ -60,7 +60,7 @@ Abrir http://localhost:5173 no browser.
 
 ## Decisões técnicas
 
-> As secções abaixo descrevem a entrega inicial. Algumas foram atualizadas depois, após
+> As secções abaixo descrevem a entrega inicial. Algumas foram atualizadas depois, após obter um
 > feedback de revisão: a extração do componente `StatusBadge` partilhado, a
 > reestruturação do backend com padrões de Domain-Driven Design ("Arquitetura do backend"
 > abaixo), e a adoção do React Query com separação de lógica de formulário no frontend
@@ -150,3 +150,5 @@ Usei o **Claude Code** (aplicação desktop e extensão do VS Code) ao longo de 
 Usei-a também para me explicar conceitos que desconhecia por completo (React, Node.js, Express, HTTP, Mongoose), já que não tinha experiência relevante nestas tecnologias.
 
 Um exemplo concreto de revisão que fiz ao código gerado: identifiquei, com apoio da IA, que a regra de conflito de horários só estava a ser verificada no momento de aceitar um convite (`PATCH /invites`), mas não quando o próprio organizador é automaticamente aceite na reunião que cria (`POST /meetings`) — o que permitia, na prática, criar duas reuniões próprias que se sobrepunham sem nenhum aviso. Corrigi isto aplicando a mesma verificação também nesse ponto.
+
+Um segundo exemplo: ao fazer uma verificação final e completa de todos os fluxos antes do merge da resposta a feedback de revisão, identifiquei que a lista de sugestões de participantes ao criar uma reunião não tinha nenhum estado para quando a pesquisa não encontra ninguém — ao contrário das listas de reuniões, que já usavam esse padrão (`EmptyState`). Corrigi isto antes da entrega final.

@@ -1,5 +1,6 @@
 import { Badge, Button, Group, Loader, Modal, Stack, Text, TextInput, Textarea, UnstyledButton } from '@mantine/core';
 import { useCreateMeetingForm } from '../hooks/useCreateMeetingForm.js';
+import { EmptyState } from './RequestState.jsx';
 
 export function CreateMeetingModal({ opened, onClose, onCreated }) {
   const {
@@ -62,6 +63,7 @@ export function CreateMeetingModal({ opened, onClose, onCreated }) {
                 ))}
               </Stack>
             )}
+            {!searching && suggestions.length === 0 && <EmptyState message="Nenhum utilizador encontrado." />}
           </div>
 
           {selectedParticipants.length > 0 && (
