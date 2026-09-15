@@ -58,6 +58,10 @@ participantes e o estado de cada convite já incluída — mostrar isso diretame
 extra. Visível para qualquer participante ou organizador dessa reunião (sem restrição de
 "admin" — decisão descartada).
 
+**Nota de implementação:** o estado de cada convite (pending/accepted/declined) é mostrado
+através de um componente partilhado `StatusBadge`, usado tanto no card da lista (secção 2)
+como no modal de detalhe — evita duplicar a lógica de cores/etiquetas em dois sítios.
+
 ## 5. Utilizador atual
 
 **Assunção a confirmar:** a caixa no topo mostra o utilizador fixo configurado

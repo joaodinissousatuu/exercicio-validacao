@@ -60,6 +60,11 @@ Abrir http://localhost:5173 no browser.
 
 ## Decisões técnicas
 
+> As secções abaixo descrevem a entrega inicial. Algumas foram atualizadas depois, em
+> resposta a feedback de revisão — nomeadamente a extração do componente `StatusBadge`
+> partilhado, que resolve uma duplicação identificada e já documentada aqui como algo a
+> fazer com mais tempo.
+
 ### Autenticação
 
 Não há autenticação real, cada pedido à API identifica-se através do header `X-User-Id`, sempre com o mesmo valor: o ID de um utilizador previamente definido (Ana Silva). 
@@ -130,7 +135,6 @@ Duas correções feitas depois de uma primeira revisão do backend:
 - **Autenticação real**: numa aplicação em produção, substituiria o utilizador fixo por um sistema de contas a sério — registo, palavras-passe com hash (nunca em texto simples), e sessão/token para manter o login entre pedidos. Não o fiz aqui porque o próprio enunciado desaconselha investir tempo nisso, e o foco do exercício está na regra de conflito de horários.
 - **Concorrência**: a verificação de conflito faz leitura e escrita sem qualquer tipo de bloqueio — em teoria, dois pedidos de aceitação em simultâneo, para reuniões que se sobrepõem, poderiam ambos passar a verificação antes de qualquer um gravar o resultado. Resolveria isto com uma transação do MongoDB.
 - **Distribuição do projeto**: adicionaria um `docker-compose.yml` com uma instância local do MongoDB, para quem for avaliar isto não depender das minhas credenciais pessoais do Atlas.
-- **Pequena duplicação no frontend**: `MeetingCard.jsx` e `MeetingDetailModal.jsx` definem, cada um, o mesmo objeto de cores/etiquetas para os estados dos convites — extraía isso para um único sítio partilhado.
 - **Mais testes**: atualmente só a função de conflito (`overlap.js`) tem testes automáticos. Adicionaria testes de integração às rotas, sobretudo à verificação de conflito no `POST /meetings` e no `PATCH /invites`.
 - **Escalabilidade da pesquisa de utilizadores**: com a lista de utilizadores pequena, o endpoint devolve todos quando a pesquisa está vazia. Numa aplicação com muitos mais utilizadores, adicionaria paginação ou um mínimo de caracteres antes de pesquisar.
 
