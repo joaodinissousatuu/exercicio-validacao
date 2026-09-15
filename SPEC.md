@@ -3,6 +3,9 @@
 Documento de decisões técnicas do backend, fechado antes de qualquer implementação.
 Serve de base direta para as secções "Decisões técnicas" e "Assunções" do README final.
 
+> As secções 1-7 descrevem a entrega inicial. A secção 8 foi acrescentada depois, em
+> resposta a feedback de revisão.
+
 ## 1. Modelo de dados
 
 ### User
@@ -86,3 +89,44 @@ Docker, paginação, filtros, documentação da API, testes e2e, tratamento expl
 - **Tipagem:** JSDoc (`@typedef`, `@param`, `@returns`) aplicado a `User`, `Meeting` e à função `overlap` — o código mais crítico e mais reutilizado. Resto do backend em JavaScript simples, sem anotações.
 - **Fronteira HTTP** (`req.body`/`req.params`): não protegida por tipos — protegida por testes automatizados, já que nenhum sistema de tipos (incluindo TypeScript completo) garante a forma de dados vindos de fora da aplicação.
 - **Frontend:** React — decisões de UI/UX e bibliotecas a fechar em spec separada.
+
+## 8. Arquitetura do backend — atualização pós-feedback (Domain-Driven Design)
+
+**Decisão:** aplicar os padrões táticos do Domain-Driven Design relevantes à escala deste projeto (entidade, objeto de valor, agregado, serviço de domínio, repositório), sem adotar o design estratégico completo (bounded contexts, mapas de contexto, eventos de domínio).
+
+**Porquê:** feedback de revisão apontou a ausência de alinhamento com a direção arquitetural discutida previamente. Com duas entidades e uma regra de negócio central, o design estratégico do DDD não se aplica de forma útil (não há fronteiras de domínio reais para desenhar) — mas as peças táticas resolvem um problema concreto já identificado: a lógica de conflito estava duplicada entre `POST /meetings` e `PATCH /invites`, e misturada com acesso direto ao Mongoose dentro das rotas.
+
+**Linguagem ubíqua:** os termos usados no código refletem diretamente o vocabulário do negócio, sem tradução — "aceitar convite", "conflito de horário", "organizador", "participante" aparecem tal como no enunciado, tanto no código como na documentação.
+
+**Nova estrutura:**
+```
+backend/src/
+├── domain/
+│   └── conflictService.js   ← regra de negócio, sem HTTP nem Mongoose
+├── repositories/
+│   ├── meetingRepository.js ← esconde as queries Mongoose
+│   └── userRepository.js
+├── models/                   ← inalterado
+├── middleware/                ← inalterado
+├── routes/                    ← passam a "controladores finos"
+└── utils/
+    └── overlap.js             ← inalterado, continua só a matemática
+```
+
+**Mapeamento dos conceitos aplicados:**
+
+| Conceito | No projeto | Aplicado? |
+|---|---|---|
+| Entidade | `User`, `Meeting` | Sim (já existia, agora nomeado explicitamente) |
+| Objeto de valor | `{ start, end }` de `toRange()` | Sim (já existia) |
+| Agregado | `Meeting` + `participants` embutidos | Sim (já existia estruturalmente) |
+| Serviço de domínio | `domain/conflictService.js` | Novo — consolida a lógica antes duplicada |
+| Repositório | `repositories/*.js` | Novo — esconde o Mongoose das rotas |
+| Bounded Context | — | Não aplicado — domínio único, sem fronteiras reais |
+| Evento de domínio | — | Não aplicado — não há efeitos secundários/notificações no projeto |
+
+**Efeito colateral positivo:** a consolidação em `conflictService.js` elimina a duplicação entre `POST /meetings` e `PATCH /invites` (ambos tinham praticamente a mesma query + verificação de overlap escritas separadamente).
+
+**Numa aplicação real:** se o sistema crescesse para incluir outros domínios (faturação, notificações, um painel de administração com preocupações diferentes), seria nesse ponto que introduziria bounded contexts e possivelmente eventos de domínio para comunicação entre eles — não antes disso ser uma necessidade real.
+
+**Sem mudança:** o contrato da API não muda — mesmos URLs, métodos e formas de resposta. Esta é uma reorganização interna, o frontend não precisa de nenhuma alteração por causa disto.
