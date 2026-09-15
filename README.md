@@ -62,8 +62,8 @@ Abrir http://localhost:5173 no browser.
 
 > As secções abaixo descrevem a entrega inicial. Algumas foram atualizadas depois, em
 > resposta a feedback de revisão — nomeadamente a extração do componente `StatusBadge`
-> partilhado, que resolve uma duplicação identificada e já documentada aqui como algo a
-> fazer com mais tempo.
+> partilhado, e a reestruturação do backend com padrões de Domain-Driven Design (ver
+> "Arquitetura do backend" abaixo).
 
 ### Autenticação
 
@@ -80,31 +80,28 @@ Optei por esta abordagem para não gastar tempo que poderia faltar para aplicar 
 
 Usei JSDoc (`@typedef`, `@param`, `@returns`) nos ficheiros mais críticos — os modelos `User`/`Meeting` e a função de conflito, pois pesquisei e conclui que poderia ser uma mais valia no processo de desenvolvimento do código: avisa de incompatibilidades de forma enquanto o código é escrito, mas **não tem efeito nenhum em tempo de execução** — não valida nada quando a aplicação está a correr. Essa validação a sério (campos obrigatórios, tipos, valores permitidos) é feita pelo `Mongoose`, através do schema. Optámos por não adotar `TypeScript` completo no projeto para não acrescentar uma curva de aprendizagem extra, dado o tempo disponível e a falta de experiência prévia em `JavaScript`/`React`.
 
-### Onde vive a regra de conflito
+### A matemática da sobreposição
 
-A regra está dividida propositadamente em dois sítios:
-
-- **`utils/overlap.js`** — só compara. Responde à pergunta "estes dois intervalos de tempo sobrepõem-se?". Não tem acesso a nada do resto da aplicação, o que o torna fácil de testar isoladamente.
-- **`routes/meetings.js`** — o alcance da regra: contra que reuniões comparar (só as já **aceites** do mesmo utilizador, nunca as pendentes), em que momento (só ao **aceitar** um convite, nunca ao recusar), e o que fazer com o resultado (bloquear com `409` se houver conflito).
-
-A fórmula criada em `overlap.js`:
+A fórmula em `utils/overlap.js` (inalterada desde a entrega inicial):
 ```
 overlap(A, B) = A.inicio < B.fim && B.inicio < A.fim
 ```
-Cobre os três casos possíveis — sem sobreposição, sobreposição total e sobreposição parcial.
+Cobre os três casos possíveis — sem sobreposição, sobreposição total e sobreposição parcial. É lógica pura, sem acesso a nada do resto da aplicação, o que a torna fácil de testar isoladamente.
+
+### Arquitetura do backend: Domain-Driven Design
+
+Em resposta a feedback de revisão, reestruturei o backend aplicando os padrões táticos do DDD proporcionais à escala do projeto (entidade, objeto de valor, agregado, serviço de domínio, repositório) — sem bounded contexts nem eventos de domínio, que não se justificam com duas entidades e um domínio só (decisão detalhada em `SPEC.md`, secção 8).
+
+- **`domain/conflictService.js`** — serviço de domínio que decide se há conflito de horário (usando o `overlap()` acima), sem conhecer HTTP nem Mongoose. Consolida a lógica que antes estava duplicada entre `POST /meetings` (auto-aceite do organizador) e `PATCH /invites` (aceitar um convite) — o alcance da regra (contra que reuniões comparar, em que momento) vive aqui, não misturado nas rotas.
+- **`repositories/`** — escondem as queries Mongoose atrás de nomes que refletem o vocabulário do negócio (`findAcceptedForUser`, `findForUser`, etc.). As rotas nunca acedem ao Mongoose diretamente.
+- **`routes/`** — reduzidas a controladores finos: leem o pedido, chamam o serviço de domínio/repositório certo, devolvem a resposta.
+- **`models/`** e **`middleware/`** — inalterados desde a entrega inicial.
+
+O contrato da API não mudou com esta reestruturação — mesmos URLs, métodos e formas de resposta; verificado com os testes automáticos e testes manuais a todos os endpoints.
 
 ### `hasConflict` calculado no backend
 
-O `GET /meetings` devolve, para cada reunião com o convite `pending`, um campo `hasConflict` já calculado pelo servidor (reutilizando a mesma função `overlap()`). O frontend mostra esse aviso diretamente, sem reimplementar a lógica — assim existe uma única fonte de verdade para a regra mais importante do projeto, em vez de duas versões (backend e frontend) que um dia poderiam divergir.
-
-### Organização de pastas do backend
-
-- **`models/`** — só a forma dos dados (User, Meeting).
-- **`middleware/`** — código que corre antes de qualquer rota (identificar o utilizador atual).
-- **`routes/`** — o que acontece quando chega um pedido a um URL específico.
-- **`utils/`** — lógica reutilizável, independente do resto da aplicação (a função de conflito).
-
-Cada pasta representa um tipo diferente de responsabilidade — separa "o que são os dados" de "o que acontece quando alguém pede algo" de "lógica pura, sem contexto de HTTP ou base de dados".
+O `GET /meetings` devolve, para cada reunião com o convite `pending`, um campo `hasConflict` já calculado pelo servidor (via `conflictService`). O frontend mostra esse aviso diretamente, sem reimplementar a lógica — assim existe uma única fonte de verdade para a regra mais importante do projeto, em vez de duas versões (backend e frontend) que um dia poderiam divergir.
 
 ### Stack do frontend
 
