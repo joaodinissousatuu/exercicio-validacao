@@ -108,27 +108,27 @@ O `GET /meetings` devolve, para cada reunião com o convite `pending`, um campo 
 
 `React` + `Vite` + `Mantine` (biblioteca de componentes, para não escrever CSS à mão).
 
-A interface tem um único ecrã de reuniões, com separadores "Pendentes" e "Todas", em vez de páginas separadas — reduz a estrutura (uma rota, um fetch, um conjunto de estados de loading/vazio/erro) sem perder a distinção entre "o que precisa da minha ação" e "o histórico completo".
+A interface tem um único ecrã de reuniões, com separadores "Pendentes" e "Todas", em vez de páginas separadas — reduz a estrutura (uma rota, um fetch, um conjunto de estados de loading/vazio/erro) sem confundir "o que precisa da minha ação" e "o histórico completo".
 
-**Gestão de dados: React Query (atualizado pós-feedback).** A entrega inicial usava `fetch` simples com hooks manuais (`useState`/`useEffect`), para manter a curva de aprendizagem baixa. Feedback de revisão apontou a ausência de uma solução de state management/data-fetching, e a lógica de loading/erro/refetch estava misturada dentro dos componentes — os dois problemas resolvidos ao mesmo tempo pelo `@tanstack/react-query`:
-- `useMeetings`, `useMeeting`, `useUserSearch` mantêm os mesmos nomes e forma de uso, mas por dentro usam `useQuery` — cache, revalidação e deduplicação de pedidos de raiz.
+**Gestão de dados: React Query (atualizado pós-feedback).** O projeto inicial usava `fetch` simples com hooks manuais (`useState`/`useEffect`), para manter a curva de aprendizagem baixa. Após feedback entendi que era relevante implementar uma solução de state management/data-fetching. Outro erro cometido foi misturar a lógica de loading/erro/refetch dentro dos componentes. Os dois problemas foram resolvidos ao mesmo tempo pelo `@tanstack/react-query`:
+- `useMeetings`, `useMeeting`, `useUserSearch` mantêm os mesmos nomes e forma de usar, mas por dentro usam `useQuery`: cache, revalidação e deduplicação de pedidos de raiz.
 - Aceitar/recusar convite e criar reunião passam a `useMutation`, invalidando a query `['meetings']` no sucesso em vez de `refetch()` manuais.
-- `api/meetings.js`, `api/users.js` e `apiFetch.js` ficaram inalterados — o React Query usa-os tal como estão.
+- `api/meetings.js`, `api/users.js` e `apiFetch.js` ficaram inalterados: o React Query usa-os como estão.
 
 **Separação de lógica e UI (atualizado pós-feedback).** A validação e gestão de campos do formulário de criar reunião, antes misturada com o JSX do `CreateMeetingModal.jsx`, está agora isolada num hook próprio (`useCreateMeetingForm`) — o componente ficou reduzido a apresentação.
 
 ### CORS e tratamento de erros assíncronos
 
-Duas correções feitas depois de uma primeira revisão do backend:
+Duas correções feitas numa primeira revisão ao backend, antes de qualquer feedback externo:
 
 - **`CORS`**: por defeito, o browser bloqueia pedidos entre origens diferentes (o `React` em `localhost:5173`, a API em `localhost:3000` contam como origens diferentes, mesmo sendo ambos "localhost"). Adicionei o middleware `cors()` para permitir explicitamente estes pedidos.
-- **Erros assíncronos**: no `Express` 4, um erro lançado dentro de uma função de rota `async` não chega automaticamente ao middleware de tratamento de erros — é uma limitação conhecida desta versão. Acrescentei `express-async-errors`, que corrige isto, garantindo que erros inesperados do servidor produzem sempre uma resposta de erro tratada, em vez de ficarem sem resposta.
+- **Erros assíncronos**: no `Express` 4, um erro lançado dentro de uma função de rota `async` não chega automaticamente ao middleware de tratamento de erros — é uma limitação conhecida desta versão. Acrescentei `express-async-errors`, que corrige isto, garantindo que erros inesperados do servidor mostram sempre uma resposta de erro tratada, em vez de ficarem sem resposta.
 
 ## Assunções
 
 - O organizador de uma reunião fica automaticamente convidado e aceite nela — não precisa de a aceitar separadamente.
 - Só o organizador pode convidar participantes, e só no momento em que cria a reunião — não há edição de participantes depois de criada.
-- Um utilizador só pode ter um convite por reunião (sem duplicados).
+- Um utilizador só pode ter um convite para cada reunião.
 - Convites **pendentes** não contam para efeitos de conflito de horário — só convites já **aceites**. Assim, posso continuar a receber convites sobrepostos entre si, e só sou impedido de aceitar um deles se já tiver outro aceite no mesmo período.
 - A data e a hora de início de uma reunião não podem estar no passado (valido a combinação das duas, não só a data).
 - Todos os campos de uma reunião (título, descrição, data, hora) são de preenchimento obrigatório.
@@ -149,6 +149,6 @@ Usei o **Claude Code** (aplicação desktop e extensão do VS Code) ao longo de 
 
 Usei-a também para me explicar conceitos que desconhecia por completo (React, Node.js, Express, HTTP, Mongoose), já que não tinha experiência relevante nestas tecnologias.
 
-Um exemplo concreto de revisão que fiz ao código gerado: identifiquei, com apoio da IA, que a regra de conflito de horários só estava a ser verificada no momento de aceitar um convite (`PATCH /invites`), mas não quando o próprio organizador é automaticamente aceite na reunião que cria (`POST /meetings`) — o que permitia, na prática, criar duas reuniões próprias que se sobrepunham sem nenhum aviso. Corrigi isto aplicando a mesma verificação também nesse ponto.
+Um exemplo concreto de revisão que fiz ao código gerado: desconfiei e identifiquei, com apoio da IA, que a regra de conflito de horários só estava a ser verificada no momento de aceitar um convite (`PATCH /invites`), mas não quando o próprio organizador é automaticamente aceite na reunião que cria (`POST /meetings`) — o que permitia, na prática, criar duas reuniões próprias que se sobrepunham sem nenhum aviso. Corrigi isto aplicando uma verificação também nesse ponto.
 
-Um segundo exemplo: ao fazer uma verificação final e completa de todos os fluxos antes do merge da resposta a feedback de revisão, identifiquei que a lista de sugestões de participantes ao criar uma reunião não tinha nenhum estado para quando a pesquisa não encontra ninguém — ao contrário das listas de reuniões, que já usavam esse padrão (`EmptyState`). Corrigi isto antes da entrega final.
+Um segundo exemplo: ao fazer uma verificação final e completa de todos os fluxos antes do merge, identifiquei que a lista de sugestões de participantes ao criar uma reunião não tinha nenhum estado para quando a pesquisa não encontra ninguém — ao contrário das listas de reuniões, que já usavam esse padrão (`EmptyState`). Corrigi isto antes de fazer merge novamente.
