@@ -119,7 +119,7 @@ A interface tem um único ecrã de reuniões, com separadores "Pendentes" e "Tod
 
 ### CORS e tratamento de erros assíncronos
 
-Duas correções feitas numa primeira revisão ao backend, antes de qualquer feedback externo:
+Duas correções feitas numa primeira revisão ao backend, antes de qualquer feedback:
 
 - **`CORS`**: por defeito, o browser bloqueia pedidos entre origens diferentes (o `React` em `localhost:5173`, a API em `localhost:3000` contam como origens diferentes, mesmo sendo ambos "localhost"). Adicionei o middleware `cors()` para permitir explicitamente estes pedidos.
 - **Erros assíncronos**: no `Express` 4, um erro lançado dentro de uma função de rota `async` não chega automaticamente ao middleware de tratamento de erros — é uma limitação conhecida desta versão. Acrescentei `express-async-errors`, que corrige isto, garantindo que erros inesperados do servidor mostram sempre uma resposta de erro tratada, em vez de ficarem sem resposta.
