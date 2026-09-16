@@ -1,79 +1,23 @@
-import { useState } from 'react';
 import { Badge, Button, Group, Loader, Modal, Stack, Text, TextInput, Textarea, UnstyledButton } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
-import { useUserSearch } from '../hooks/useUserSearch.js';
-import { createMeeting } from '../api/meetings.js';
-import { FIXED_USER_ID } from '../constants.js';
-
-const emptyForm = { title: '', description: '', date: '', startTime: '' };
+import { useCreateMeetingForm } from '../hooks/useCreateMeetingForm.js';
+import { EmptyState } from './RequestState.jsx';
 
 export function CreateMeetingModal({ opened, onClose, onCreated }) {
-  const [form, setForm] = useState(emptyForm);
-  const [participantQuery, setParticipantQuery] = useState('');
-  const [selectedParticipants, setSelectedParticipants] = useState([]);
-  const [submitting, setSubmitting] = useState(false);
-  const [formError, setFormError] = useState(null);
-
-  const { users, loading: searching } = useUserSearch(participantQuery);
-  // O organizador já fica incluído automaticamente (ver backend) — não faz sentido
-  // sugerirmo-nos a nós próprios como convidado.
-  const suggestions = users
-    .filter((u) => u._id !== FIXED_USER_ID)
-    .filter((u) => !selectedParticipants.some((p) => p._id === u._id));
-
-  function updateField(field) {
-    return (e) => {
-      // O valor tem de ser lido já aqui, de forma síncrona — o React reutiliza/liberta
-      // o evento depois do handler terminar, e o setForm(f => ...) só corre mais tarde
-      // (na próxima renderização), altura em que e.currentTarget já seria null.
-      const value = e.currentTarget.value;
-      setForm((f) => ({ ...f, [field]: value }));
-    };
-  }
-
-  function handleClose() {
-    setForm(emptyForm);
-    setParticipantQuery('');
-    setSelectedParticipants([]);
-    setFormError(null);
-    onClose();
-  }
-
-  function addParticipant(user) {
-    setSelectedParticipants((prev) => [...prev, user]);
-    setParticipantQuery('');
-  }
-
-  function removeParticipant(userId) {
-    setSelectedParticipants((prev) => prev.filter((p) => p._id !== userId));
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setFormError(null);
-
-    if (!form.title || !form.description || !form.date || !form.startTime) {
-      setFormError('Todos os campos são obrigatórios.');
-      return;
-    }
-    // Validação replicada do backend só para feedback mais rápido — quem decide é a API.
-    if (new Date(`${form.date}T${form.startTime}`).getTime() < Date.now()) {
-      setFormError('Data/hora não pode estar no passado.');
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      await createMeeting({ ...form, participantIds: selectedParticipants.map((p) => p._id) });
-      notifications.show({ color: 'green', title: 'Reunião criada', message: form.title });
-      handleClose();
-      onCreated();
-    } catch (err) {
-      setFormError(err.message);
-    } finally {
-      setSubmitting(false);
-    }
-  }
+  const {
+    form,
+    participantQuery,
+    setParticipantQuery,
+    selectedParticipants,
+    suggestions,
+    searching,
+    submitting,
+    formError,
+    updateField,
+    handleClose,
+    addParticipant,
+    removeParticipant,
+    handleSubmit,
+  } = useCreateMeetingForm({ onClose, onCreated });
 
   return (
     <Modal opened={opened} onClose={handleClose} title="Criar reunião" size="md">
@@ -119,6 +63,7 @@ export function CreateMeetingModal({ opened, onClose, onCreated }) {
                 ))}
               </Stack>
             )}
+            {!searching && suggestions.length === 0 && <EmptyState message="Nenhum utilizador encontrado." />}
           </div>
 
           {selectedParticipants.length > 0 && (

@@ -1,12 +1,7 @@
-import { Badge, Group, Modal, Stack, Text } from '@mantine/core';
+import { Group, Modal, Stack, Text } from '@mantine/core';
 import { useMeeting } from '../hooks/useMeeting.js';
 import { ErrorState, LoadingState } from './RequestState.jsx';
-
-const STATUS_LABELS = {
-  pending: { label: 'Pendente', color: 'yellow' },
-  accepted: { label: 'Aceite', color: 'green' },
-  declined: { label: 'Recusada', color: 'red' },
-};
+import { StatusBadge } from './StatusBadge.jsx';
 
 export function MeetingDetailModal({ meetingId, onClose }) {
   const { meeting, loading, error, refetch } = useMeeting(meetingId);
@@ -48,7 +43,7 @@ export function MeetingDetailModal({ meetingId, onClose }) {
                       @{p.userId.username}
                     </Text>
                   </Text>
-                  <Badge color={STATUS_LABELS[p.status].color}>{STATUS_LABELS[p.status].label}</Badge>
+                  <StatusBadge status={p.status} />
                 </Group>
               ))}
             </Stack>

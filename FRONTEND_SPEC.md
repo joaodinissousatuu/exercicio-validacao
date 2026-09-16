@@ -3,6 +3,10 @@
 Decisões de UI/UX fechadas antes da implementação. Complementa o `SPEC.md` (backend),
 que já define o modelo de dados e os endpoints usados aqui.
 
+> Este documento descreve a entrega inicial. A secção 6 foi reescrita depois, em resposta
+> a feedback de revisão — adoção do React Query e separação de lógica de formulário para
+> fora dos componentes (ver também a nota na secção 3).
+
 ## 1. Navegação
 
 Barra de navegação no **topo** da página, com:
@@ -51,12 +55,20 @@ Ao submeter, `POST /meetings` com `participantIds` = lista dos IDs selecionados.
 organizador não precisa de se adicionar a si próprio — o backend trata disso automaticamente
 (e já verifica conflito para o organizador antes de aceitar a própria reunião).
 
+**Nota de implementação:** a gestão dos campos e a validação deste formulário vivem num
+hook próprio (`useCreateMeetingForm`), não dentro do componente — o componente fica só com
+o JSX. Ver secção 6 para o porquê desta separação.
+
 ## 4. Detalhe da reunião
 
 Ao abrir uma reunião (a partir do card), `GET /meetings/:id` devolve a reunião com a lista de
 participantes e o estado de cada convite já incluída — mostrar isso diretamente, sem pedido
 extra. Visível para qualquer participante ou organizador dessa reunião (sem restrição de
 "admin" — decisão descartada).
+
+**Nota de implementação:** o estado de cada convite (pending/accepted/declined) é mostrado
+através de um componente partilhado `StatusBadge`, usado tanto no card da lista (secção 2)
+como no modal de detalhe — evita duplicar a lógica de cores/etiquetas em dois sítios.
 
 ## 5. Utilizador atual
 
@@ -66,16 +78,30 @@ consistente com a decisão já fechada no `SPEC.md` ("utilizador previamente def
 login"). Se a intenção era mesmo um seletor funcional (trocar entre vários utilizadores
 seed), é preciso avisar antes de avançar — implica reabrir essa decisão do backend.
 
-## 6. Gestão de dados / chamadas à API
+## 6. Gestão de dados / chamadas à API (atualizado pós-feedback)
 
-Sem bibliotecas extra de fetching (nada de React Query) — `fetch()` simples, envolvido em
-pequenos hooks próprios por recurso (ex.: `useMeetings()`, `useUserSearch(query)`). Cada
-pedido inclui sempre o header `X-User-Id` com o utilizador fixo — centralizar isso numa
-função `apiFetch()` só, para não repetir o header em cada chamada.
+**Decisão:** adotar o TanStack Query (React Query) para leitura e escrita de dados,
+substituindo os hooks manuais (`useState`/`useEffect`) por `useQuery`/`useMutation`.
 
-Justificação: o projeto tem poucos endpoints (5), e mantém-se consistente com a decisão já
-tomada no backend de evitar camadas de abstração extra que não sejam necessárias para a
-dimensão do exercício.
+**Porquê:** feedback de revisão apontou a ausência de uma solução de state
+management/data-fetching, e a lógica de loading/erro/refetch estava misturada dentro dos
+componentes. O React Query resolve os dois pontos ao mesmo tempo: dá cache, revalidação e
+deduplicação de pedidos de raiz, e tira dos componentes a gestão manual desses estados.
+
+**O que muda, concretamente:**
+- **Hooks de leitura** (`useMeetings`, `useMeeting`, `useUserSearch`) — mantêm os mesmos
+  nomes e a mesma forma de uso nos componentes; por dentro passam a usar `useQuery`. Chaves
+  de query: `['meetings']`, `['meeting', id]`, `['users', query]`.
+- **Mutations** (aceitar/recusar convite, criar reunião) — `useMutation`, chamando as
+  mesmas funções já existentes em `api/meetings.js`. Depois de sucesso, invalida-se
+  `['meetings']` (`queryClient.invalidateQueries`), substituindo os `refetch()` manuais.
+- **`api/meetings.js` e `api/users.js`** — inalterados. O React Query usa-os tal como estão.
+- **`apiFetch.js`** — inalterado, continua a ser o único sítio que fala HTTP e trata do
+  header `X-User-Id`.
+
+**O que fica separado à parte, não resolvido só pelo React Query:** a lógica de formulário
+do `CreateMeetingModal` (validação, gestão dos campos) não é data-fetching — extraída para
+`useCreateMeetingForm` (ver nota na secção 3).
 
 ## 7. Estados obrigatórios
 
