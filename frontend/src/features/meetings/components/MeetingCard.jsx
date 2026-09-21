@@ -1,6 +1,6 @@
 import { Button, Card, Group, Stack, Text } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
-import { FIXED_USER_ID } from '../constants.js';
+import { FIXED_USER_ID } from '../../../constants.js';
 import { StatusBadge } from './StatusBadge.jsx';
 
 export function MeetingCard({ meeting, showActions, responding, onOpen, onAccept, onDecline }) {

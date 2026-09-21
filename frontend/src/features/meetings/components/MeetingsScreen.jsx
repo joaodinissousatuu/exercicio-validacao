@@ -3,9 +3,9 @@ import { Button, Group, Stack, Tabs, Title } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useMeetings } from '../hooks/useMeetings.js';
 import { useRespondToInvite } from '../hooks/useRespondToInvite.js';
-import { FIXED_USER_ID } from '../constants.js';
+import { FIXED_USER_ID } from '../../../constants.js';
 import { MeetingCard } from './MeetingCard.jsx';
-import { EmptyState, ErrorState, LoadingState } from './RequestState.jsx';
+import { EmptyState, ErrorState, LoadingState } from '../../../shared/components/RequestState.jsx';
 import { CreateMeetingModal } from './CreateMeetingModal.jsx';
 import { MeetingDetailModal } from './MeetingDetailModal.jsx';
 

@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { notifications } from '@mantine/notifications';
-import { useUserSearch } from './useUserSearch.js';
+import { useUserSearch } from '../../users/hooks/useUserSearch.js';
 import { useCreateMeeting } from './useCreateMeeting.js';
-import { FIXED_USER_ID } from '../constants.js';
+import { FIXED_USER_ID } from '../../../constants.js';
 
 const emptyForm = { title: '', description: '', date: '', startTime: '' };
 

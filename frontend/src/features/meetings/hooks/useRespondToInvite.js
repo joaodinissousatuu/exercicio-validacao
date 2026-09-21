@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { respondToInvite } from '../api/meetings.js';
+import { respondToInvite } from '../api.js';
 
 export function useRespondToInvite() {
   const queryClient = useQueryClient();

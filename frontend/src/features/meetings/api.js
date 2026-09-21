@@ -1,4 +1,4 @@
-import { apiFetch } from './apiFetch.js';
+import { apiFetch } from '../../shared/apiFetch.js';
 
 export const getMeetings = () => apiFetch('/meetings');
 

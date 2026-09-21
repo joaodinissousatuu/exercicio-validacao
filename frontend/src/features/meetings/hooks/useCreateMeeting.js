@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { createMeeting } from '../api/meetings.js';
+import { createMeeting } from '../api.js';
 
 export function useCreateMeeting() {
   const queryClient = useQueryClient();

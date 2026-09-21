@@ -1,6 +1,6 @@
 import { useDebouncedValue } from '@mantine/hooks';
 import { useQuery } from '@tanstack/react-query';
-import { searchUsers } from '../api/users.js';
+import { searchUsers } from '../api.js';
 
 export function useUserSearch(query) {
   const [debounced] = useDebouncedValue(query, 300);

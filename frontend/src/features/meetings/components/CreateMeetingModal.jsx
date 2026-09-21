@@ -1,6 +1,6 @@
 import { Badge, Button, Group, Loader, Modal, Stack, Text, TextInput, Textarea, UnstyledButton } from '@mantine/core';
 import { useCreateMeetingForm } from '../hooks/useCreateMeetingForm.js';
-import { EmptyState } from './RequestState.jsx';
+import { EmptyState } from '../../../shared/components/RequestState.jsx';
 
 export function CreateMeetingModal({ opened, onClose, onCreated }) {
   const {

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { getMeeting } from '../api/meetings.js';
+import { getMeeting } from '../api.js';
 
 export function useMeeting(id) {
   const { data, isLoading, error, refetch } = useQuery({

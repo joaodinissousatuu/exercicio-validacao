@@ -1,6 +1,6 @@
 import { Group, Modal, Stack, Text } from '@mantine/core';
 import { useMeeting } from '../hooks/useMeeting.js';
-import { ErrorState, LoadingState } from './RequestState.jsx';
+import { ErrorState, LoadingState } from '../../../shared/components/RequestState.jsx';
 import { StatusBadge } from './StatusBadge.jsx';
 
 export function MeetingDetailModal({ meetingId, onClose }) {
