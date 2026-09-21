@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import { connectDB } from './db.js';
-import { User } from './models/User.js';
-import { Meeting } from './models/Meeting.js';
+import { User } from './users/User.js';
+import { Meeting } from './meetings/Meeting.js';
 
 // Utilizador fixo da app (sem login) — o seu _id é o valor a usar no header X-User-Id.
 const FIXED_USER = { name: 'Ana Silva', username: 'ana.silva' };

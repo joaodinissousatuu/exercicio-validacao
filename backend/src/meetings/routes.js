@@ -1,29 +1,26 @@
 import express from 'express';
-import { meetingRepository } from '../repositories/meetingRepository.js';
-import { userRepository } from '../repositories/userRepository.js';
-import { hasConflict } from '../domain/conflictService.js';
-import { toRange } from '../utils/overlap.js';
+import { meetingRepository } from './meetingRepository.js';
+import { userRepository } from '../users/userRepository.js';
+import { hasConflict } from '../scheduling/conflictService.js';
+import { toRange } from '../scheduling/overlap.js';
 
 export const meetingsRouter = express.Router();
 
 // GET /meetings — reuniões do utilizador atual (organizadas + convidado, todos os estados).
 // Cada reunião com o meu convite 'pending' vem com hasConflict: indica se aceitá-la
-// entraria em conflito com outra reunião minha já aceite (mesma regra de domain/conflictService.js,
-// única fonte de verdade — o frontend não reimplementa esta lógica).
+// entraria em conflito com outra reunião minha já aceite (mesma regra de
+// scheduling/conflictService.js, única fonte de verdade — o frontend não reimplementa esta lógica).
 meetingsRouter.get('/', async (req, res) => {
   const userId = String(req.currentUser._id);
 
   const meetings = await meetingRepository.findForUser(req.currentUser._id);
 
-  const acceptedMeetings = meetings.filter((m) =>
-    m.participants.some((p) => String(p.userId) === userId && p.status === 'accepted'),
-  );
+  // "Quem está aceite" e "o meu convite está pendente" são perguntas sobre o
+  // próprio agregado Meeting — pedimos-lhas a ele, em vez de ler `participants` daqui.
+  const acceptedMeetings = meetings.filter((m) => m.isAcceptedBy(userId));
 
   const result = meetings.map((m) => {
-    const myParticipant = m.participants.find((p) => String(p.userId) === userId);
-    const isPending = myParticipant?.status === 'pending';
-    const conflict = isPending ? hasConflict(m, acceptedMeetings, m._id) : false;
-
+    const conflict = m.isPendingFor(userId) ? hasConflict(m, acceptedMeetings, m._id) : false;
     return { ...m.toObject(), hasConflict: conflict };
   });
 
@@ -85,11 +82,7 @@ meetingsRouter.get('/:id', async (req, res) => {
     return res.status(404).json({ error: 'Reunião não encontrada.' });
   }
 
-  const currentUserId = String(req.currentUser._id);
-  const isOrganizer = String(meeting.organizerId._id) === currentUserId;
-  const isParticipant = meeting.participants.some((p) => String(p.userId._id) === currentUserId);
-
-  if (!isOrganizer && !isParticipant) {
+  if (!meeting.hasAccess(req.currentUser._id)) {
     return res.status(403).json({ error: 'Sem acesso a esta reunião.' });
   }
 
@@ -118,8 +111,7 @@ meetingsRouter.patch('/:id/invites/:userId', async (req, res) => {
     return res.status(404).json({ error: 'Reunião não encontrada.' });
   }
 
-  const participant = meeting.participants.find((p) => String(p.userId) === userId);
-  if (!participant) {
+  if (!meeting.findParticipant(userId)) {
     return res.status(404).json({ error: 'Não foste convidado para esta reunião.' });
   }
 
@@ -130,7 +122,9 @@ meetingsRouter.patch('/:id/invites/:userId', async (req, res) => {
     }
   }
 
-  participant.status = status;
+  // O agregado é quem sabe gravar a resposta ao seu próprio convite — a rota
+  // já não mexe em `participants` diretamente (ver Meeting.js).
+  meeting.respondToInvite(userId, status);
   await meetingRepository.save(meeting);
   res.json(meeting);
 });

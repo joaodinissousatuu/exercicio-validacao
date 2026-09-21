@@ -1,5 +1,5 @@
-import { User } from '../models/User.js';
-import { isValidId } from './objectId.js';
+import { User } from './User.js';
+import { isValidId } from '../shared/objectId.js';
 
 /**
  * Esconde as queries Mongoose sobre a coleção de utilizadores — as rotas

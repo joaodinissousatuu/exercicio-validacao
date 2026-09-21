@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { User } from '../models/User.js';
+import { User } from '../users/User.js';
 
 /**
  * Lê o header X-User-Id, valida que corresponde a um utilizador existente

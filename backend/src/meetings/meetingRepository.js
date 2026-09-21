@@ -1,5 +1,5 @@
-import { Meeting } from '../models/Meeting.js';
-import { isValidId } from './objectId.js';
+import { Meeting } from './Meeting.js';
+import { isValidId } from '../shared/objectId.js';
 
 /**
  * Esconde as queries Mongoose sobre a coleção de reuniões — as rotas falam
