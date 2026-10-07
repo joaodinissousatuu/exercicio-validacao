@@ -1,0 +1,85 @@
+// O seed grava diretamente nos modelos Mongoose (infraestrutura), não passa
+// pelas entidades de domínio (User/Meeting) nem pelos repositórios — é um
+// script de arranque da base de dados, não uma operação de negócio.
+import { UserModel } from './users/UserModel.js';
+import { MeetingModel } from './meetings/MeetingModel.js';
+import { InviteStatus } from './meetings/InviteStatus.js';
+
+// Utilizador fixo da app (sem login) — o seu _id é o valor a usar no header X-User-Id.
+const FIXED_USER = { name: 'Ana Silva', username: 'ana.silva' };
+
+// Outros utilizadores, só para haver quem pesquisar/convidar.
+const OTHER_USERS = [
+  { name: 'Bruno Costa', username: 'bruno.costa' },
+  { name: 'Carla Mendes', username: 'carla.mendes' },
+  { name: 'Diogo Ferreira', username: 'diogo.ferreira' },
+  { name: 'Elena Rocha', username: 'elena.rocha' },
+];
+
+function tomorrowDate() {
+  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  return tomorrow.toISOString().slice(0, 10); // 'YYYY-MM-DD'
+}
+
+// upsert por username: correr o seed várias vezes não muda os _id já atribuídos
+// (importante porque o utilizador fixo vai ficar codificado no frontend, sem login).
+function upsertUser(data) {
+  return UserModel.findOneAndUpdate({ username: data.username }, { $set: data }, { upsert: true, new: true });
+}
+
+/**
+ * Dados de demonstração: o utilizador fixo, outros utilizadores para convidar, e
+ * três reuniões para amanhã — uma aceite, um convite em conflito com ela e um
+ * convite livre. Usa a ligação Mongoose já aberta por quem chama (seed.js, ou o
+ * servidor dos testes ponta a ponta do frontend). Devolve o utilizador fixo.
+ */
+export async function seedDemoData() {
+  const fixedUser = await upsertUser(FIXED_USER);
+  const [, carla, diogo] = await Promise.all(OTHER_USERS.map(upsertUser));
+
+  // Reuniões são recriadas do zero a cada seed, para a demo partir sempre do mesmo estado.
+  await MeetingModel.deleteMany({});
+  const date = tomorrowDate();
+
+  // Reunião já aceite do utilizador fixo (organizador = automaticamente aceite),
+  // para o conflito de horários ser demonstrável sem ter de o fabricar manualmente.
+  await MeetingModel.create({
+    title: 'Reunião de alinhamento semanal',
+    description: 'Ponto de situação semanal da equipa.',
+    date,
+    startTime: '10:00',
+    organizerId: fixedUser._id,
+    participants: [{ userId: fixedUser._id, status: InviteStatus.ACCEPTED }],
+  });
+
+  // Convite pendente que SOBREPÕE a reunião aceite acima (10:00-11:00) — organizado
+  // por outro utilizador, para o utilizador fixo poder testar o aviso de conflito e
+  // o 409 ao tentar aceitar, sem precisar de fabricar o cenário manualmente.
+  await MeetingModel.create({
+    title: 'Revisão de proposta com a Carla',
+    description: 'Rever a proposta antes de enviar ao cliente.',
+    date,
+    startTime: '10:30',
+    organizerId: carla._id,
+    participants: [
+      { userId: carla._id, status: InviteStatus.ACCEPTED },
+      { userId: fixedUser._id, status: InviteStatus.PENDING },
+    ],
+  });
+
+  // Convite pendente SEM sobreposição — para testar também o caminho feliz (aceitar
+  // sem conflito).
+  await MeetingModel.create({
+    title: 'Brainstorm com o Diogo',
+    description: 'Ideias para a próxima sprint.',
+    date,
+    startTime: '15:00',
+    organizerId: diogo._id,
+    participants: [
+      { userId: diogo._id, status: InviteStatus.ACCEPTED },
+      { userId: fixedUser._id, status: InviteStatus.PENDING },
+    ],
+  });
+
+  return fixedUser;
+}

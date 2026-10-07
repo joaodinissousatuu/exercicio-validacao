@@ -834,3 +834,42 @@ partir de um clone limpo antes do primeiro push.
 **Fora do âmbito:** testes ponta a ponta do frontend no CI (falta escrevê-los) e a verificação de
 tipos (`tsc`), que ainda tem erros antigos por resolver (faltam os tipos do Node, e há anotações do
 Mongoose por corrigir) e falharia sempre.
+
+## 23. Testes ponta a ponta do frontend (Playwright)
+
+**Decisão:** acrescentar testes ponta a ponta (`frontend/e2e/`, `npm run test:e2e`) em que um browser
+(Chromium, via Playwright) usa a aplicação real contra o backend real, com os dados de demonstração
+do seed numa base de dados MongoDB em memória. Até aqui o frontend só era verificado com lint e
+build, e à mão. Nas secções 18-21 a verificação no browser foi feita com scripts que não ficaram no
+repositório.
+
+**Como funciona:**
+- `backend/test/e2e-server.js` (`npm run e2e:server`): um backend descartável. Arranca o MongoDB em
+  memória, carrega os dados de demonstração (com a Ana sempre no mesmo id, para o frontend o poder
+  receber em `VITE_FIXED_USER_ID` antes de o servidor arrancar) e serve a app Express real. Um
+  `POST /reset` repõe os dados antes de cada teste. Vive numa porta e numa app à parte, por isso a
+  app de produção não ganha nenhuma rota de teste.
+- Para o servidor de testes reutilizar os dados de demonstração, a lógica do `seed.js` passou para
+  `src/seedData.js` (`seedDemoData()`). O `npm run seed` faz exatamente o mesmo que antes.
+- `frontend/playwright.config.js` arranca esse backend e o `vite` (com as variáveis `VITE_*`
+  apontadas para ele), e corre os testes um de cada vez, porque partilham a base de dados.
+
+**O que testam** (9 testes, ~20 segundos), pelas regras que a Ana vê:
+- abre nos pendentes, com o aviso de conflito só no convite que se sobrepõe;
+- o separador "Todas" mostra o estado de cada convite, e sem botões;
+- aceitar sem conflito: o convite sai dos pendentes e fica aceite;
+- aceitar com conflito: aparece o erro do backend e o convite fica pendente;
+- recusar nunca é bloqueado, mesmo um convite em conflito;
+- o detalhe mostra o organizador e o estado de cada participante;
+- criar uma reunião logo a seguir a outra (sem conflito) e convidar alguém pela pesquisa;
+- criar em conflito: aparece o erro no formulário e nada é criado;
+- a pesquisa sem resultados mostra o estado vazio.
+
+**Os testes apanham bugs reais do frontend:** foram introduzidos cinco, um de cada vez, e a suite
+falhou em todos: o aviso de conflito nunca aparecer, o botão "Rejeitar" enviar `accepted`, a lista
+não se atualizar depois de responder, os participantes escolhidos não serem enviados ao criar, e o
+erro do backend não aparecer no formulário.
+
+**Versão do Playwright:** fixada em 1.56.1 (via `package-lock.json`). Corre no CI num job próprio,
+que instala o Chromium dessa versão e, se falhar, guarda o relatório com traces e capturas de ecrã
+como artefacto da execução.
