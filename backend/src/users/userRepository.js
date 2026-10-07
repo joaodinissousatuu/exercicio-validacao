@@ -10,7 +10,7 @@ import { isValidId } from '../shared/objectId.js';
  * Architecture.
  */
 
-/** @param {import('./UserModel.js').UserModel} doc */
+/** @param {InstanceType<typeof import('./UserModel.js').UserModel>} doc - documento Mongoose devolvido por uma query */
 function toDomain(doc) {
   return new User({ _id: String(doc._id), name: doc.name, username: doc.username });
 }

@@ -109,6 +109,7 @@ describe('create() e leitura', () => {
 
     const meeting = await meetingRepository.findByIdWithDetails(id);
 
+    assert.ok(typeof meeting.organizerId === 'object', 'organizerId devia vir populado');
     assert.equal(meeting.organizerId.username, 'ana');
     assert.equal(meeting.isOrganizer(ana), true);
     assert.equal(meeting.inviteStatusOf(carla), 'pending');

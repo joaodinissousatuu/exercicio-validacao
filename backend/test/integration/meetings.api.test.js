@@ -276,3 +276,15 @@ describe('GET /users — o texto da pesquisa é literal, não uma expressão reg
     assert.deepEqual(star.body, []);
   });
 });
+
+describe('GET /users — parâmetro q repetido ou com formato de objeto', () => {
+  test('não dá erro: só um texto simples é usado como pesquisa', async () => {
+    const repeated = await as(ana).get('/users?q=car&q=dio');
+    const asObject = await as(ana).get('/users?q[x]=car');
+
+    assert.equal(repeated.status, 200);
+    assert.equal(asObject.status, 200);
+    assert.equal(repeated.body.length, 4); // ignorado: como uma pesquisa sem termo
+  });
+});
+

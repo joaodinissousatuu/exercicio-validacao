@@ -3,8 +3,14 @@ import { Agenda } from '../scheduling/Agenda.js';
 import { InviteStatus, isInviteResponse } from './InviteStatus.js';
 
 /**
+ * Referência a um User: o id, ou o utilizador populado (só em
+ * meetingRepository.findByIdWithDetails(), para o detalhe mostrar nomes).
+ * @typedef {string | { _id: string, name: string, username: string }} UserRef
+ */
+
+/**
  * @typedef {Object} Participant
- * @property {string} userId - Referência ao User convidado.
+ * @property {UserRef} userId - Referência ao User convidado.
  * @property {import('./InviteStatus.js').InviteStatusValue} status - Estado do convite deste participante (ver GLOSSARY.md: o convite não é uma entidade à parte, é este estado).
  */
 
@@ -15,7 +21,7 @@ import { InviteStatus, isInviteResponse } from './InviteStatus.js';
  * @property {string} description - Descrição da reunião.
  * @property {string} date - Data da reunião (formato 'YYYY-MM-DD').
  * @property {string} startTime - Hora de início (formato 'HH:mm'). Duração fixa de 1h, não é campo guardado.
- * @property {string} organizerId - Referência ao User que criou a reunião.
+ * @property {UserRef} organizerId - Referência ao User que criou a reunião.
  * @property {ReadonlyArray<Participant>} participants - Lista de participantes, inclui o organizador (já aceite). É copiada pelo construtor.
  */
 
