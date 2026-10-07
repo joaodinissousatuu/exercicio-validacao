@@ -148,6 +148,26 @@ async function save(meeting) {
   loadedVersions.set(meeting, version + 1);
 }
 
+/**
+ * Reuniões gravadas que o modelo atual já não aceita — por exemplo, data/hora
+ * inválida (validada só desde a SPEC §17) ou o organizador sem o convite aceite
+ * (invariante desde a §18). Uma só reunião assim faz falhar as listas de quem nela
+ * participa, porque não se consegue construir o agregado. Só lê; não altera nada.
+ * Usado por `npm run check-data` (src/check-data.js).
+ * @returns {Promise<{ _id: string, title: string, reason: string }[]>}
+ */
+async function findInvalid() {
+  const invalid = [];
+  for await (const doc of MeetingModel.find().sort({ _id: 1 })) {
+    try {
+      toDomain(doc).timeSlot();
+    } catch (err) {
+      invalid.push({ _id: String(doc._id), title: doc.title, reason: err.message });
+    }
+  }
+  return invalid;
+}
+
 export const meetingRepository = {
   isValidId,
   findForUser,
@@ -156,4 +176,5 @@ export const meetingRepository = {
   findByIdWithDetails,
   create,
   save,
+  findInvalid,
 };

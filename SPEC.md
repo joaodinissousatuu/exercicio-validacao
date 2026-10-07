@@ -504,7 +504,7 @@ MongoDB real, `seed.js` e `server.js` verdadeiros) dá respostas idênticas ante
 únicas respostas novas são as dos três casos acima (`400`, `409` por concorrência, `403`),
 documentadas na secção 13.
 
-**A ter em conta:** uma reunião gravada antes desta correção com data/hora inválida (só possível
+**A ter em conta** *(a §21 acrescenta `npm run check-data` para encontrar estas reuniões)***:** uma reunião gravada antes desta correção com data/hora inválida (só possível
 chamando a API diretamente — o formulário do frontend usa campos `date`/`time`) faria agora
 `GET /meetings` falhar com `500` para quem a tem, porque o seu bloco de tempo já não se consegue
 construir. O `seed.js` apaga todas as reuniões, por isso uma base de dados criada a partir dele
@@ -588,7 +588,7 @@ regras de seleção (filtros, que o enunciado lista como extra), a decisão deve
 
 ### O que fica por fazer
 
-- **`participants` continua a ser um array público e mutável.** As invariantes são verificadas na
+- *(Resolvido na §21, com `toJSON()` — afinal sem precisar de um DTO.)* **`participants` continua a ser um array público e mutável.** As invariantes são verificadas na
   construção, mas `meeting.participants.push(...)` continua possível. Torná-lo privado (`#`) faria
   `res.json(meeting)` deixar de o serializar; resolver isto passa por separar o agregado da forma
   como é enviado na API (DTO), o que é uma mudança maior.
@@ -755,3 +755,60 @@ corre estes testes; o `-core` só o descarrega na primeira vez que a suite corre
 
 **Resultado:** 25 testes de integração, ~4 segundos depois do primeiro download. `npm test`
 continua com os mesmos 47 testes unitários.
+
+## 21. Pesquisa literal, verificação de dados antigos e encapsulamento do `Meeting`
+
+**Decisão:** corrigir três problemas que ficaram em aberto depois das secções 17-20. Cada um foi
+reproduzido primeiro com um teste a falhar.
+
+### 1. A pesquisa de utilizadores trata o texto como literal (bug)
+
+`GET /users?q=...` passava o texto do utilizador diretamente para um `$regex` do MongoDB. Por isso,
+pesquisar `(` ou `[` dava erro `500`, `.` encontrava qualquer carácter (`ana.silva` encontrava
+também `anaXsilva`), e um padrão malicioso podia deixar a base de dados lenta (ReDoS).
+`userRepository.search()` passa a escapar o texto antes de o usar: pesquisa-se o que foi escrito,
+nada mais.
+
+### 2. `npm run check-data`: encontrar reuniões que o modelo já não aceita
+
+Reuniões gravadas antes das regras atuais (data/hora validada desde a §17; organizador obrigado a
+estar aceite desde a §18) já não se conseguem transformar num `Meeting`. Uma só reunião assim faz
+`GET /meetings` dar `500` a todos os que nela participam. A §17 já referia o caso da data inválida,
+mas a §18 acrescentou outro sem o assinalar: o organizador que recusou a própria reunião (possível
+antes da §17).
+
+- `meetingRepository.findInvalid()` percorre as reuniões gravadas e devolve as que o modelo
+  recusa, com o motivo (a mensagem do erro de domínio).
+- `npm run check-data` (`src/check-data.js`) usa-a contra a base de dados do `.env`, lista o que
+  encontrar e termina com código `1`, ou diz que não há nenhuma e termina com `0`. **Só lê**: não
+  corrige nem apaga nada, porque essa decisão cabe a quem gere os dados.
+
+Foi considerada a alternativa de tornar a lista tolerante (ignorar a reunião inválida e registá-la
+no log). Não foi aplicada: escondia dados estragados, que apareceriam a uns utilizadores e não a
+outros sem ninguém perceber porquê.
+
+### 3. A reunião só muda através dos seus métodos (encapsulamento)
+
+A §18 deixou em aberto: `meeting.participants.push(...)` continuava possível, e as invariantes só
+eram verificadas na construção. Dizia também que resolver isto exigia separar o agregado da forma
+enviada pela API (um DTO). Afinal não exigia:
+
+- a lista interna passa a ser um campo privado (`#participants`), e `participants` passa a ser um
+  getter que devolve uma lista **só de leitura** (array e participantes congelados);
+- o construtor copia a lista que recebe, por isso alterar o array original depois não afeta a
+  reunião;
+- `findParticipant()` devolve o participante só de leitura; só `respondToInvite()` muda um
+  convite, substituindo o participante por uma cópia nova;
+- o objeto é congelado no fim do construtor: `meeting.date = ...` deixa de ser possível;
+- `toJSON()` devolve a mesma forma de antes. O `JSON.stringify` (e portanto o `res.json`) chama-o
+  automaticamente, por isso a API não muda. Onde o código fazia spread de um `Meeting`
+  (`{ ...m }`, em `GET /meetings` e num teste), passa a usar `m.toJSON()`, porque o spread não copia
+  campos privados nem getters.
+
+**Testes:** 52 unitários (antes 47; +5 de encapsulamento e da forma do `toJSON`) e 30 de integração
+(antes 25; +1 da pesquisa literal, +4 de dados antigos e do `check-data`).
+
+**Sem mudança na API:** com MongoDB real, o código antes e depois desta secção dá respostas
+idênticas nos 30 pedidos dos cenários das secções 16-19. O JSON de seis respostas
+(lista, os três detalhes populados, aceitar e criar) foi comparado **byte a byte** e é igual. O
+frontend, verificado no Chromium, mostra o mesmo que antes, sem erros na consola.

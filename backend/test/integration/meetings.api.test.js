@@ -252,3 +252,27 @@ describe('GET /users', () => {
     assert.equal(all.body.length, 4);
   });
 });
+
+describe('GET /users — o texto da pesquisa é literal, não uma expressão regular', () => {
+  test('caracteres especiais não dão erro e não têm significado especial', async () => {
+    await createUsers('ana.silva', 'anaXsilva', 'joao(2)');
+
+    const parenthesis = await as(ana).get(`/users?q=${encodeURIComponent('(')}`);
+    const bracket = await as(ana).get(`/users?q=${encodeURIComponent('[')}`);
+    const dot = await as(ana).get(`/users?q=${encodeURIComponent('ana.silva')}`);
+    const star = await as(ana).get(`/users?q=${encodeURIComponent('.*')}`);
+
+    assert.equal(parenthesis.status, 200);
+    assert.deepEqual(
+      parenthesis.body.map((u) => u.username),
+      ['joao(2)'],
+    );
+    assert.equal(bracket.status, 200);
+    assert.deepEqual(bracket.body, []);
+    assert.deepEqual(
+      dot.body.map((u) => u.username),
+      ['ana.silva'],
+    );
+    assert.deepEqual(star.body, []);
+  });
+});

@@ -284,11 +284,93 @@ test('agendaOf: a agenda das reuniões aceites deteta conflito com o bloco de te
   const organizerId = new mongoose.Types.ObjectId();
   const participants = [{ userId: organizerId, status: 'accepted' }];
   const accepted = makeMeeting({ organizerId, participants }); // 2026-09-10, 09:00-10:00
-  const candidate = new Meeting({ ...accepted, startTime: '09:30' });
-  const later = new Meeting({ ...accepted, startTime: '10:00' });
+  const candidate = new Meeting({ ...accepted.toJSON(), startTime: '09:30' });
+  const later = new Meeting({ ...accepted.toJSON(), startTime: '10:00' });
 
   const agenda = agendaOf([accepted]);
 
   assert.equal(agenda.conflictsWith(candidate.timeSlot()), true);
   assert.equal(agenda.conflictsWith(later.timeSlot()), false);
+});
+
+test('encapsulamento: alterar a lista devolvida por `participants` não muda a reunião', () => {
+  const organizerId = new mongoose.Types.ObjectId();
+  const carlaId = new mongoose.Types.ObjectId();
+  const meeting = makeMeeting({ organizerId, participants: [{ userId: organizerId, status: 'accepted' }] });
+
+  // @ts-expect-error -- alteração proibida de propósito: é isto que o teste verifica
+  assert.throws(() => meeting.participants.push({ userId: carlaId, status: 'accepted' }), TypeError);
+  assert.throws(() => {
+    // @ts-expect-error -- alteração proibida de propósito: é isto que o teste verifica
+    meeting.participants[0].status = 'declined';
+  }, TypeError);
+  assert.equal(meeting.participants.length, 1);
+  assert.equal(meeting.inviteStatusOf(String(organizerId)), 'accepted');
+});
+
+test('encapsulamento: alterar o participante devolvido por findParticipant não muda o convite', () => {
+  const organizerId = new mongoose.Types.ObjectId();
+  const meeting = makeMeeting({ organizerId, participants: [{ userId: organizerId, status: 'accepted' }] });
+
+  assert.throws(() => {
+    // @ts-expect-error -- alteração proibida de propósito: é isto que o teste verifica
+    meeting.findParticipant(String(organizerId)).status = 'declined';
+  }, TypeError);
+  assert.equal(meeting.inviteStatusOf(String(organizerId)), 'accepted');
+});
+
+test('encapsulamento: alterar o array passado ao construtor, depois de criar, não muda a reunião', () => {
+  const organizerId = new mongoose.Types.ObjectId();
+  const carlaId = new mongoose.Types.ObjectId();
+  const participants = [{ userId: organizerId, status: 'accepted' }];
+  const meeting = makeMeeting({ organizerId, participants });
+
+  participants.push({ userId: carlaId, status: 'accepted' });
+  participants[0].status = 'declined';
+
+  assert.equal(meeting.participants.length, 1);
+  assert.equal(meeting.inviteStatusOf(String(organizerId)), 'accepted');
+});
+
+test('encapsulamento: os campos da reunião não podem ser reatribuídos de fora', () => {
+  const organizerId = new mongoose.Types.ObjectId();
+  const meeting = makeMeeting({ organizerId, participants: [{ userId: organizerId, status: 'accepted' }] });
+
+  assert.throws(() => {
+    meeting.date = 'amanhã';
+  }, TypeError);
+  assert.equal(meeting.date, '2026-09-10');
+});
+
+test('toJSON: a forma enviada pela API não muda (campos, ordem e valores)', () => {
+  const organizerId = String(new mongoose.Types.ObjectId());
+  const carlaId = String(new mongoose.Types.ObjectId());
+  const meeting = new Meeting({
+    _id: 'm1',
+    title: 'Reunião de teste',
+    description: 'Descrição',
+    date: '2026-09-10',
+    startTime: '09:00',
+    organizerId,
+    participants: [
+      { userId: organizerId, status: 'accepted' },
+      { userId: carlaId, status: 'pending' },
+    ],
+  });
+
+  assert.equal(
+    JSON.stringify(meeting),
+    JSON.stringify({
+      _id: 'm1',
+      title: 'Reunião de teste',
+      description: 'Descrição',
+      date: '2026-09-10',
+      startTime: '09:00',
+      organizerId,
+      participants: [
+        { userId: organizerId, status: 'accepted' },
+        { userId: carlaId, status: 'pending' },
+      ],
+    }),
+  );
 });
