@@ -1,7 +1,7 @@
 /**
  * @typedef {Object} Participant
  * @property {string} userId - Referência ao User convidado.
- * @property {'pending' | 'accepted' | 'declined'} status - Estado do convite.
+ * @property {'pending' | 'accepted' | 'declined'} status - Estado do convite deste participante (ver GLOSSARY.md: o convite não é uma entidade à parte, é este estado).
  */
 
 /**
@@ -33,7 +33,30 @@
  * agregado não tem, sozinho, os dados para a decidir — por isso continua no
  * serviço de domínio scheduling/conflictService.js, chamado pela rota antes
  * de invocar respondToInvite().
+ *
+ * Termos (reunião, organizador, participante, convite, agenda, bloco de
+ * tempo) seguem GLOSSARY.md.
  */
+
+/**
+ * Regra de Meetings, não de Scheduling: uma reunião ocupa sempre 1h a partir
+ * da hora de início (ver SPEC.md §1). O Scheduling só recebe o bloco de tempo
+ * já calculado e não sabe que esta duração existe.
+ */
+export const MEETING_DURATION_MINUTES = 60;
+
+/**
+ * Bloco de tempo ocupado por uma reunião com esta data e hora de início.
+ * Função à parte (e não só o método timeSlot()) porque, ao criar uma reunião,
+ * é preciso o bloco de tempo antes de o agregado existir.
+ * @param {{ date: string, startTime: string }} schedule
+ * @returns {import('../scheduling/overlap.js').TimeSlot}
+ */
+export function meetingTimeSlot({ date, startTime }) {
+  const start = new Date(`${date}T${startTime}`);
+  const end = new Date(start.getTime() + MEETING_DURATION_MINUTES * 60 * 1000);
+  return { start, end };
+}
 
 /** Extrai o id de uma referência, populada ou não (string crua ou objeto {_id, name, username}). */
 function idOf(value) {
@@ -50,6 +73,11 @@ export class Meeting {
     this.startTime = startTime;
     this.organizerId = organizerId;
     this.participants = participants;
+  }
+
+  /** Bloco de tempo que esta reunião ocupa na agenda de quem a aceitou. */
+  timeSlot() {
+    return meetingTimeSlot(this);
   }
 
   /** @param {string} userId @returns {Participant | null} */

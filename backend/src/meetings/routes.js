@@ -2,13 +2,18 @@ import express from 'express';
 import { meetingRepository } from './meetingRepository.js';
 import { userRepository } from '../users/userRepository.js';
 import { hasConflict } from '../scheduling/conflictService.js';
-import { toRange } from '../scheduling/overlap.js';
+import { meetingTimeSlot } from './Meeting.js';
 
 export const meetingsRouter = express.Router();
 
+/** Blocos de tempo de uma agenda, na forma que o Scheduling entende. */
+function slotsOf(agenda) {
+  return agenda.map((m) => m.timeSlot());
+}
+
 // GET /meetings — reuniões do utilizador atual (organizadas + convidado, todos os estados).
 // Cada reunião com o meu convite 'pending' vem com hasConflict: indica se aceitá-la
-// entraria em conflito com outra reunião minha já aceite (mesma regra de
+// entraria em conflito com a minha agenda (mesma regra de
 // scheduling/conflictService.js, única fonte de verdade — o frontend não reimplementa esta lógica).
 meetingsRouter.get('/', async (req, res) => {
   const userId = String(req.currentUser._id);
@@ -17,10 +22,11 @@ meetingsRouter.get('/', async (req, res) => {
 
   // "Quem está aceite" e "o meu convite está pendente" são perguntas sobre o
   // próprio agregado Meeting — pedimos-lhas a ele, em vez de ler `participants` daqui.
-  const acceptedMeetings = meetings.filter((m) => m.isAcceptedBy(userId));
+  // Uma reunião pendente nunca está na agenda, por isso não há nada a excluir.
+  const agenda = slotsOf(meetings.filter((m) => m.isAcceptedBy(userId)));
 
   const result = meetings.map((m) => {
-    const conflict = m.isPendingFor(userId) ? hasConflict(m, acceptedMeetings, m._id) : false;
+    const conflict = m.isPendingFor(userId) ? hasConflict(m.timeSlot(), agenda) : false;
     return { ...m, hasConflict: conflict };
   });
 
@@ -35,17 +41,19 @@ meetingsRouter.post('/', async (req, res) => {
     return res.status(400).json({ error: 'title, description, date e startTime são obrigatórios.' });
   }
 
-  if (toRange({ date, startTime }).start.getTime() < Date.now()) {
+  const slot = meetingTimeSlot({ date, startTime });
+
+  if (slot.start.getTime() < Date.now()) {
     return res.status(400).json({ error: 'Data/hora da reunião não pode estar no passado.' });
   }
 
   const organizerId = req.currentUser._id;
 
   // O organizador fica automaticamente 'accepted' na própria reunião (ver SPEC.md,
-  // Assunções), por isso a criação tem de ser verificada contra as reuniões já
-  // aceites do organizador — senão o auto-accept contornava a regra de conflito.
-  const organizerAcceptedMeetings = await meetingRepository.findAcceptedForUser(organizerId);
-  if (hasConflict({ date, startTime }, organizerAcceptedMeetings)) {
+  // Assunções), por isso a criação tem de ser verificada contra a agenda do
+  // organizador — senão o auto-accept contornava a regra de conflito.
+  const organizerAgenda = await meetingRepository.findAgendaOf(organizerId);
+  if (hasConflict(slot, slotsOf(organizerAgenda))) {
     return res.status(409).json({ error: 'Conflito de horário com outra reunião já aceite.' });
   }
 
@@ -116,8 +124,8 @@ meetingsRouter.patch('/:id/invites/:userId', async (req, res) => {
   }
 
   if (status === 'accepted') {
-    const acceptedMeetings = await meetingRepository.findAcceptedForUser(userId, meeting._id);
-    if (hasConflict(meeting, acceptedMeetings)) {
+    const agenda = await meetingRepository.findAgendaOf(userId, meeting._id);
+    if (hasConflict(meeting.timeSlot(), slotsOf(agenda))) {
       return res.status(409).json({ error: 'Conflito de horário com outra reunião já aceite.' });
     }
   }

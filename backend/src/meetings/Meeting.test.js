@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import mongoose from 'mongoose';
-import { Meeting } from './Meeting.js';
+import { Meeting, meetingTimeSlot, MEETING_DURATION_MINUTES } from './Meeting.js';
 
 // Testes do comportamento do agregado (Meeting.js) — construídos com `new Meeting(...)`,
 // sem qualquer ligação à base de dados: instanciar um documento e chamar os seus métodos
@@ -126,4 +126,21 @@ test('respondToInvite: devolve null e não altera nada se o utilizador não foi 
   assert.equal(result, null);
   assert.equal(meeting.participants.length, 1);
   assert.equal(meeting.participants[0].status, 'accepted');
+});
+
+test('timeSlot: uma reunião ocupa 1h a partir da hora de início', () => {
+  const organizerId = new mongoose.Types.ObjectId();
+  const meeting = makeMeeting({ organizerId, participants: [{ userId: organizerId, status: 'accepted' }] });
+
+  const slot = meeting.timeSlot();
+
+  assert.equal(MEETING_DURATION_MINUTES, 60);
+  assert.deepEqual(slot, { start: new Date('2026-09-10T09:00'), end: new Date('2026-09-10T10:00') });
+});
+
+test('meetingTimeSlot: dá o mesmo bloco de tempo antes de a reunião existir (usado ao criar)', () => {
+  const organizerId = new mongoose.Types.ObjectId();
+  const meeting = makeMeeting({ organizerId, participants: [{ userId: organizerId, status: 'accepted' }] });
+
+  assert.deepEqual(meetingTimeSlot({ date: '2026-09-10', startTime: '09:00' }), meeting.timeSlot());
 });

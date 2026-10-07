@@ -97,7 +97,7 @@ Cobre os três casos possíveis — sem sobreposição, sobreposição total e s
 O backend aplica os padrões táticos do DDD proporcionais à escala do projeto (entidade, objeto
 de valor, agregado, serviço de domínio, repositório), organizado em três **domínios de
 negócio** — `users/`, `meetings/` e `scheduling/` — em vez de por camada técnica (decisão
-detalhada em `SPEC.md`, secções 8 a 15; o histórico das duas rondas de revisão que levaram a
+detalhada em `SPEC.md`, secções 8 a 16; o histórico das duas rondas de revisão que levaram a
 esta estrutura está em `DOMAIN_MIGRATION.md`). `scheduling/` é o Core Subdomain do projeto (a
 regra de negócio principal do enunciado); `meetings/` é Supporting; `users/` é Generic — ver
 `SPEC.md` §10 para a classificação completa e para a razão de as rotas serem chamadas Serviço
@@ -113,11 +113,12 @@ infraestrutura como o capítulo 4 do livro do Evans pede.
   `findParticipant`, `isOrganizer`, `hasAccess`, `isAcceptedBy`, `isPendingFor` e
   `respondToInvite` protegem o seu próprio estado; `routes.js` já não lê nem escreve
   `participants` diretamente, pergunta ao agregado. `meetingRepository.js` esconde as queries
-  Mongoose (`findForUser`, `findAcceptedForUser`, etc.).
+  Mongoose (`findForUser`, `findAgendaOf`, etc.). É também dono da duração fixa de 1h e de
+  converter data + hora de início num bloco de tempo (`Meeting.timeSlot()`).
 - **`scheduling/`** (conflito de horário) — `overlap.js` e `conflictService.js`; um domínio à
-  parte, não uma pasta dentro de Meetings, porque a lógica é genérica sobre
-  `{ date, startTime }` e nunca conheceu o conceito de "reunião". Decide se um bloco de tempo
-  candidato entra em conflito com blocos já aceites do mesmo utilizador — uma regra que cruza
+  parte, não uma pasta dentro de Meetings, porque a lógica é genérica sobre blocos de tempo
+  (`{ start, end }`) e não conhece o conceito de "reunião", nem a sua duração. Decide se um bloco
+  de tempo candidato entra em conflito com a agenda do utilizador — uma regra que cruza
   vários agregados `Meeting` ao mesmo tempo, por isso vive num serviço de domínio, não como
   método do agregado. `meetings/routes.js` é o único ponto que liga os dois domínios, chamando
   `hasConflict()` antes de `Meeting.respondToInvite()`.
@@ -131,8 +132,12 @@ infraestrutura como o capítulo 4 do livro do Evans pede.
 Meetings sobre dados de Users, mantida por ser proporcional à escala (dois campos) e
 documentada como exceção consciente, não escondida.
 
+Os termos do domínio (agenda, bloco de tempo, convite, etc.) e o identificador de cada um no
+código estão em `GLOSSARY.md`, junto com as assunções que ainda precisam de ser confirmadas por
+um especialista do domínio.
+
 O contrato da API não mudou com esta reestruturação — mesmos URLs, métodos e formas de
-resposta; verificado com os testes automáticos (20/20 a passar, incluindo
+resposta; verificado com os testes automáticos (hoje 21/21 a passar, incluindo
 `meetings/Meeting.test.js`, sem base de dados) e testes manuais a todos os endpoints.
 
 ### `hasConflict` calculado no backend

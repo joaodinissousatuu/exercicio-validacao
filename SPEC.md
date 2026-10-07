@@ -264,11 +264,14 @@ só uma marcação do que já existe, destacando o que é central e silenciando 
 **O núcleo, e nada mais:**
 
 ```
-scheduling/overlap.js         → toRange(), rangesOverlap()   — o objeto de valor e a matemática
-scheduling/conflictService.js → hasConflict(candidate, acceptedMeetings, excludeMeetingId)
-meetings/Meeting.js           → isAcceptedBy(), isPendingFor(), respondToInvite()
+scheduling/overlap.js         → TimeSlot, overlap()           — o bloco de tempo e a matemática
+scheduling/conflictService.js → hasConflict(candidate, agenda)
+meetings/Meeting.js           → timeSlot(), isAcceptedBy(), isPendingFor(), respondToInvite()
 meetings/routes.js            → as ~6 linhas à volta de hasConflict() em POST / e PATCH /invites
 ```
+
+(Atualizado pela secção 16: `toRange()`/`rangesOverlap()` passaram a `Meeting.timeSlot()` e
+`overlap()`, e `hasConflict` deixou de receber `excludeMeetingId`.)
 
 Se um leitor só tivesse tempo de ler quatro coisas neste repositório antes de o avaliar, seriam
 estas. Tudo o resto — `users/`, os componentes React, os hooks de React Query, os middlewares —
@@ -370,3 +373,49 @@ só a infraestrutura por baixo delas.
 os 20 testes automáticos (nenhum ficheiro de teste precisou de alteração, incluindo
 `Meeting.test.js`, que já instanciava `Meeting` diretamente sem tocar em Mongoose) e com um teste
 manual completo (listar, ver detalhe populado, aceitar sem conflito, aceitar com conflito → 409).
+
+## 16. Linguagem Ubíqua: glossário, e o Scheduling deixa de falar de reuniões
+
+**Decisão:** criar `GLOSSARY.md` como a fonte única dos termos do domínio (português ↔
+identificador no código), alinhar o código com ele, e tirar de `scheduling/` o último
+conhecimento que tinha sobre reuniões.
+
+**Porquê:** ao comparar o projeto com a Parte I do livro do Evans (Linguagem Ubíqua,
+Model-Driven Design, Knowledge Crunching), ficaram identificadas três lacunas:
+
+1. **A linguagem partia-se entre a documentação e o código.** A documentação falava de "agenda" e
+   "bloco de tempo", mas o código dizia `acceptedMeetings`/`findAcceptedForUser` e
+   `toRange`/`TimeRange`. Um conceito do negócio sem nome no código é um conceito que o modelo
+   não tem.
+2. **O Scheduling dizia-se genérico, mas não era.** `scheduling/overlap.js` tinha
+   `MEETING_DURATION_MINUTES` e `toRange(meeting)`, e `hasConflict` recebia ids de reuniões
+   (`excludeMeetingId`). A regra "uma reunião dura 1h" é de Meetings, e estava escondida no
+   Scheduling — precisamente o contrário do que as secções 9 e 10 afirmavam.
+3. **Não houve especialista do domínio.** Todas as regras vieram do enunciado e de revisões
+   técnicas. Isto não se corrige com código; o que se pode fazer é tornar explícitas as
+   assunções tomadas sem ele, para serem confirmadas.
+
+**O que mudou:**
+- `GLOSSARY.md` (novo) — termos, identificadores correspondentes, termos a evitar, e a lista
+  de perguntas em aberto para um especialista do domínio (lacuna 3).
+- `scheduling/overlap.js` — só `TimeSlot` (`{ start, end }`) e `overlap(a, b)`. Sem durações, sem
+  `date`/`startTime` em texto, sem a palavra "reunião".
+- `scheduling/conflictService.js` — `hasConflict(candidate, agenda)` recebe só `TimeSlot`s.
+  `excludeMeetingId` saiu: excluir a própria reunião é vocabulário de Meetings, e já era feito
+  pela query de `findAgendaOf` (em `GET /meetings` era redundante — uma reunião pendente nunca
+  está na agenda).
+- `meetings/Meeting.js` — passa a ser dono da duração (`MEETING_DURATION_MINUTES`) e de converter
+  data + hora de início num bloco de tempo (`meetingTimeSlot()` e o método `timeSlot()`).
+- `meetings/meetingRepository.js` — `findAcceptedForUser` → `findAgendaOf`.
+- `meetings/routes.js` — fala em `agenda` e passa ao Scheduling blocos de tempo, não reuniões.
+
+**Testes:** 21/21 (antes 20). `overlap.test.js` e `conflictService.test.js` constroem blocos de
+tempo com início e fim explícitos, em vez de assumir 1h; os 3 testes de `excludeMeetingId`
+saíram com o parâmetro; `Meeting.test.js` ganha 2 testes para a duração de 1h, que é onde essa
+regra agora vive.
+
+**Sem mudança:** contrato da API e comportamento idênticos — confirmado chamando a app Express
+real (com repositórios em memória) no código antes e depois desta secção, com o mesmo cenário:
+listar com `hasConflict`, aceitar com conflito (`409`), aceitar sem conflito, voltar a aceitar um
+convite já aceite, criar com conflito, criar sem conflito, e criar no passado (`400`). As
+respostas foram iguais nos dois casos.
