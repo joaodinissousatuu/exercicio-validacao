@@ -1,7 +1,10 @@
 import mongoose from 'mongoose';
 import { connectDB } from './db.js';
-import { User } from './models/User.js';
-import { Meeting } from './models/Meeting.js';
+// O seed grava diretamente nos modelos Mongoose (infraestrutura), não passa
+// pelas entidades de domínio (User/Meeting) nem pelos repositórios — é um
+// script de arranque da base de dados, não uma operação de negócio.
+import { UserModel } from './users/UserModel.js';
+import { MeetingModel } from './meetings/MeetingModel.js';
 
 // Utilizador fixo da app (sem login) — o seu _id é o valor a usar no header X-User-Id.
 const FIXED_USER = { name: 'Ana Silva', username: 'ana.silva' };
@@ -22,7 +25,7 @@ function tomorrowDate() {
 // upsert por username: correr o seed várias vezes não muda os _id já atribuídos
 // (importante porque o utilizador fixo vai ficar codificado no frontend, sem login).
 function upsertUser(data) {
-  return User.findOneAndUpdate({ username: data.username }, { $set: data }, { upsert: true, new: true });
+  return UserModel.findOneAndUpdate({ username: data.username }, { $set: data }, { upsert: true, new: true });
 }
 
 async function seed() {
@@ -32,12 +35,12 @@ async function seed() {
   const [, carla, diogo] = await Promise.all(OTHER_USERS.map(upsertUser));
 
   // Reuniões são recriadas do zero a cada seed, para a demo partir sempre do mesmo estado.
-  await Meeting.deleteMany({});
+  await MeetingModel.deleteMany({});
   const date = tomorrowDate();
 
   // Reunião já aceite do utilizador fixo (organizador = automaticamente aceite),
   // para o conflito de horários ser demonstrável sem ter de o fabricar manualmente.
-  await Meeting.create({
+  await MeetingModel.create({
     title: 'Reunião de alinhamento semanal',
     description: 'Ponto de situação semanal da equipa.',
     date,
@@ -49,7 +52,7 @@ async function seed() {
   // Convite pendente que SOBREPÕE a reunião aceite acima (10:00-11:00) — organizado
   // por outro utilizador, para o utilizador fixo poder testar o aviso de conflito e
   // o 409 ao tentar aceitar, sem precisar de fabricar o cenário manualmente.
-  await Meeting.create({
+  await MeetingModel.create({
     title: 'Revisão de proposta com a Carla',
     description: 'Rever a proposta antes de enviar ao cliente.',
     date,
@@ -63,7 +66,7 @@ async function seed() {
 
   // Convite pendente SEM sobreposição — para testar também o caminho feliz (aceitar
   // sem conflito).
-  await Meeting.create({
+  await MeetingModel.create({
     title: 'Brainstorm com o Diogo',
     description: 'Ideias para a próxima sprint.',
     date,

@@ -60,11 +60,14 @@ Abrir http://localhost:5173 no browser.
 
 ## Decisões técnicas
 
-> As secções abaixo descrevem a entrega inicial. Algumas foram atualizadas depois, após obter um
-> feedback de revisão: a extração do componente `StatusBadge` partilhado, a
-> reestruturação do backend com padrões de Domain-Driven Design ("Arquitetura do backend"
-> abaixo), e a adoção do React Query com separação de lógica de formulário no frontend
-> ("Stack do frontend" abaixo).
+> As secções abaixo descrevem a entrega inicial. Algumas foram atualizadas depois, em duas
+> rondas de feedback de revisão: primeiro a extração do componente `StatusBadge` partilhado, a
+> reestruturação do backend com padrões de Domain-Driven Design, e a adoção do React Query com
+> separação de lógica de formulário no frontend; depois, numa segunda ronda, dar comportamento
+> aos modelos de domínio (deixavam de ser anémicos), extrair `scheduling/` como domínio próprio
+> no backend, e reorganizar o frontend por domínio em vez de por camada técnica — ver
+> "Arquitetura do backend" e "Stack do frontend" abaixo, e `DOMAIN_MIGRATION.md` para o
+> detalhe completo de todo o histórico da migração.
 
 ### Autenticação
 
@@ -83,22 +86,54 @@ Usei JSDoc (`@typedef`, `@param`, `@returns`) nos ficheiros mais críticos — o
 
 ### A matemática da sobreposição
 
-A fórmula em `utils/overlap.js` (inalterada desde a entrega inicial):
+A fórmula em `scheduling/overlap.js` (inalterada desde a entrega inicial):
 ```
 overlap(A, B) = A.inicio < B.fim && B.inicio < A.fim
 ```
 Cobre os três casos possíveis — sem sobreposição, sobreposição total e sobreposição parcial. É lógica pura, sem acesso a nada do resto da aplicação, o que a torna fácil de testar isoladamente.
 
-### Arquitetura do backend: Domain-Driven Design
+### Arquitetura do backend: Domain-Driven Design (organização por domínio)
 
-Em resposta a feedback de revisão, reestruturei o backend aplicando os padrões táticos do DDD proporcionais à escala do projeto (entidade, objeto de valor, agregado, serviço de domínio, repositório) — sem bounded contexts nem eventos de domínio, que não se justificam com duas entidades e um domínio só (decisão detalhada em `SPEC.md`, secção 8).
+O backend aplica os padrões táticos do DDD proporcionais à escala do projeto (entidade, objeto
+de valor, agregado, serviço de domínio, repositório), organizado em três **domínios de
+negócio** — `users/`, `meetings/` e `scheduling/` — em vez de por camada técnica (decisão
+detalhada em `SPEC.md`, secções 8 a 15; o histórico das duas rondas de revisão que levaram a
+esta estrutura está em `DOMAIN_MIGRATION.md`). `scheduling/` é o Core Subdomain do projeto (a
+regra de negócio principal do enunciado); `meetings/` é Supporting; `users/` é Generic — ver
+`SPEC.md` §10 para a classificação completa e para a razão de as rotas serem chamadas Serviço
+de Aplicação, não só "controladores finos". `Meeting`/`User` também deixaram de depender do
+Mongoose diretamente — são classes de domínio simples, com o schema de persistência à parte em
+`MeetingModel.js`/`UserModel.js` (`SPEC.md` §15), para a camada de Domínio ficar isolada de
+infraestrutura como o capítulo 4 do livro do Evans pede.
 
-- **`domain/conflictService.js`** — serviço de domínio que decide se há conflito de horário (usando o `overlap()` acima), sem conhecer HTTP nem Mongoose. Consolida a lógica que antes estava duplicada entre `POST /meetings` (auto-aceite do organizador) e `PATCH /invites` (aceitar um convite) — o alcance da regra (contra que reuniões comparar, em que momento) vive aqui, não misturado nas rotas.
-- **`repositories/`** — escondem as queries Mongoose atrás de nomes que refletem o vocabulário do negócio (`findAcceptedForUser`, `findForUser`, etc.). As rotas nunca acedem ao Mongoose diretamente.
-- **`routes/`** — reduzidas a controladores finos: leem o pedido, chamam o serviço de domínio/repositório certo, devolvem a resposta.
-- **`models/`** e **`middleware/`** — inalterados desde a entrega inicial.
+- **`users/`** (identidade) — `User.js`, `userRepository.js` (esconde as queries Mongoose atrás
+  de nomes que refletem o vocabulário do negócio) e `routes.js`. Não sabe nada sobre reuniões
+  nem conflitos de horário.
+- **`meetings/`** (agendamento) — `Meeting.js` é um agregado com comportamento próprio:
+  `findParticipant`, `isOrganizer`, `hasAccess`, `isAcceptedBy`, `isPendingFor` e
+  `respondToInvite` protegem o seu próprio estado; `routes.js` já não lê nem escreve
+  `participants` diretamente, pergunta ao agregado. `meetingRepository.js` esconde as queries
+  Mongoose (`findForUser`, `findAcceptedForUser`, etc.).
+- **`scheduling/`** (conflito de horário) — `overlap.js` e `conflictService.js`; um domínio à
+  parte, não uma pasta dentro de Meetings, porque a lógica é genérica sobre
+  `{ date, startTime }` e nunca conheceu o conceito de "reunião". Decide se um bloco de tempo
+  candidato entra em conflito com blocos já aceites do mesmo utilizador — uma regra que cruza
+  vários agregados `Meeting` ao mesmo tempo, por isso vive num serviço de domínio, não como
+  método do agregado. `meetings/routes.js` é o único ponto que liga os dois domínios, chamando
+  `hasConflict()` antes de `Meeting.respondToInvite()`.
+- **`shared/objectId.js`** — validação de formato de ObjectId, partilhada pelos três domínios; a
+  única peça sem vocabulário de negócio.
+- **`middleware/`** — inalterado; fica fora de `users/` porque a sua função é pipeline HTTP, não
+  lógica de domínio.
 
-O contrato da API não mudou com esta reestruturação — mesmos URLs, métodos e formas de resposta; verificado com os testes automáticos e testes manuais a todos os endpoints.
+`meetingRepository.findByIdWithDetails()` usa `.populate()` do Mongoose para ir buscar
+`name`/`username` de Users ao mostrar o detalhe de uma reunião — a única dependência direta de
+Meetings sobre dados de Users, mantida por ser proporcional à escala (dois campos) e
+documentada como exceção consciente, não escondida.
+
+O contrato da API não mudou com esta reestruturação — mesmos URLs, métodos e formas de
+resposta; verificado com os testes automáticos (20/20 a passar, incluindo
+`meetings/Meeting.test.js`, sem base de dados) e testes manuais a todos os endpoints.
 
 ### `hasConflict` calculado no backend
 
@@ -116,6 +151,8 @@ A interface tem um único ecrã de reuniões, com separadores "Pendentes" e "Tod
 - `api/meetings.js`, `api/users.js` e `apiFetch.js` ficaram inalterados: o React Query usa-os como estão.
 
 **Separação de lógica e UI (atualizado pós-feedback).** A validação e gestão de campos do formulário de criar reunião, antes misturada com o JSX do `CreateMeetingModal.jsx`, está agora isolada num hook próprio (`useCreateMeetingForm`) — o componente ficou reduzido a apresentação.
+
+**Organização por domínio, não por camada (atualizado numa segunda ronda de feedback).** `components/`, `hooks/` e `api/` eram pastas por tipo técnico, com ficheiros de Meetings e de Users misturados dentro de cada uma — o único lado da aplicação sem nenhuma organização por domínio, quando o backend já tinha `users/` vs `meetings/` (ver acima). Passaram a `features/meetings/{api.js,components/,hooks/}` e `features/users/{api.js,hooks/}`, com `shared/` só para o que é mesmo transversal aos dois: `apiFetch.js` e `RequestState.jsx`. O único import entre domínios (`useCreateMeetingForm` a chamar `useUserSearch`) é o paralelo direto do único cross-domínio do backend. Sem mudança de comportamento — build com os mesmos hashes de asset de antes desta reorganização. Detalhe em `DOMAIN_MIGRATION.md`.
 
 ### CORS e tratamento de erros assíncronos
 
@@ -140,7 +177,7 @@ Duas correções feitas numa primeira revisão ao backend, antes de qualquer fee
 - **Autenticação real**: numa aplicação em produção, substituiria o utilizador fixo por um sistema de contas a sério — registo, palavras-passe com hash (nunca em texto simples), e sessão/token para manter o login entre pedidos. Não o fiz aqui porque o próprio enunciado desaconselha investir tempo nisso, e o foco do exercício está na regra de conflito de horários.
 - **Concorrência**: a verificação de conflito faz leitura e escrita sem qualquer tipo de bloqueio — em teoria, dois pedidos de aceitação em simultâneo, para reuniões que se sobrepõem, poderiam ambos passar a verificação antes de qualquer um gravar o resultado. Resolveria isto com uma transação do MongoDB.
 - **Distribuição do projeto**: adicionaria um `docker-compose.yml` com uma instância local do MongoDB, para quem for avaliar isto não depender das minhas credenciais pessoais do Atlas.
-- **Mais testes**: atualmente só a função de conflito (`overlap.js`) tem testes automáticos. Adicionaria testes de integração às rotas, sobretudo à verificação de conflito no `POST /meetings` e no `PATCH /invites`.
+- **Mais testes**: atualmente só a lógica pura tem testes automáticos — `overlap.js`, `conflictService.js` (domínio Scheduling) e o comportamento do agregado `Meeting` (`meetings/Meeting.test.js`). Adicionaria testes de integração às rotas, sobretudo à verificação de conflito no `POST /meetings` e no `PATCH /invites`.
 - **Escalabilidade da pesquisa de utilizadores**: com a lista de utilizadores pequena, o endpoint devolve todos quando a pesquisa está vazia. Numa aplicação com muitos mais utilizadores, adicionaria paginação ou um mínimo de caracteres antes de pesquisar.
 
 ## Ferramentas de IA
@@ -152,3 +189,5 @@ Usei-a também para me explicar conceitos que desconhecia por completo (React, N
 Um exemplo concreto de revisão que fiz ao código gerado: desconfiei e identifiquei, com apoio da IA, que a regra de conflito de horários só estava a ser verificada no momento de aceitar um convite (`PATCH /invites`), mas não quando o próprio organizador é automaticamente aceite na reunião que cria (`POST /meetings`) — o que permitia, na prática, criar duas reuniões próprias que se sobrepunham sem nenhum aviso. Corrigi isto aplicando uma verificação também nesse ponto.
 
 Um segundo exemplo: ao fazer uma verificação final e completa de todos os fluxos antes do merge, identifiquei que a lista de sugestões de participantes ao criar uma reunião não tinha nenhum estado para quando a pesquisa não encontra ninguém — ao contrário das listas de reuniões, que já usavam esse padrão (`EmptyState`). Corrigi isto antes de fazer merge novamente.
+
+Numa terceira ronda, feedback de revisão apontou que a separação em pastas por domínio (`users/`/`meetings/` no backend) não bastava por si só — os modelos continuavam sem comportamento, e o frontend nunca tinha sido reorganizado da mesma forma. Discuti este feedback com a IA para perceber com precisão o que estava a faltar (modelo anémico vs. comportamento no agregado, e a organização do frontend por camada técnica em vez de domínio), e implementei com o seu apoio as mudanças documentadas em `DOMAIN_MIGRATION.md`.

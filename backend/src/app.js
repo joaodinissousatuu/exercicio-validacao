@@ -2,8 +2,8 @@ import 'express-async-errors';
 import express from 'express';
 import cors from 'cors';
 import { currentUser } from './middleware/currentUser.js';
-import { usersRouter } from './routes/users.js';
-import { meetingsRouter } from './routes/meetings.js';
+import { usersRouter } from './users/routes.js';
+import { meetingsRouter } from './meetings/routes.js';
 
 export const app = express();
 

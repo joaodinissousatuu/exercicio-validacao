@@ -3,9 +3,10 @@
 Decisões de UI/UX fechadas antes da implementação. Complementa o `SPEC.md` (backend),
 que já define o modelo de dados e os endpoints usados aqui.
 
-> Este documento descreve a entrega inicial. A secção 6 foi reescrita depois, em resposta
-> a feedback de revisão — adoção do React Query e separação de lógica de formulário para
-> fora dos componentes (ver também a nota na secção 3).
+> Este documento descreve a entrega inicial. A secção 6 foi reescrita numa primeira ronda de
+> feedback — adoção do React Query e separação de lógica de formulário para fora dos
+> componentes (ver também a nota na secção 3). A secção 9 foi acrescentada numa segunda ronda —
+> reorganização por domínio em vez de camada técnica.
 
 ## 1. Navegação
 
@@ -119,3 +120,18 @@ utilizadores):
 - **Biblioteca de UI:** por decidir na implementação (ex.: Mantine, para não escreveres CSS à
   mão) — não é uma decisão que afete a lógica de negócio, pode ser ajustada livremente sem
   reabrir esta spec.
+
+## 9. Organização de pastas — atualização pós-revisão (por domínio, não por camada)
+
+**Decisão:** `components/`, `hooks/` e `api/` (pastas por tipo técnico, com Meetings e Users
+misturados dentro de cada uma) passam a `features/meetings/` e `features/users/`, cada uma com
+o seu `api.js`, `components/` e `hooks/`. O que é genuinamente transversal aos dois domínios
+(`apiFetch.js`, o `RequestState.jsx` de loading/vazio/erro) fica em `shared/`.
+
+**Porquê:** era o único lado da aplicação sem nenhuma organização por domínio — o backend já
+tinha `users/` vs `meetings/` (ver `SPEC.md` secção 8), mas o frontend continuava organizado
+exatamente pelo padrão técnico que essa decisão rejeitou. Detalhe completo em
+`DOMAIN_MIGRATION.md`.
+
+**Sem mudança:** comportamento igual (confirmado por build com os mesmos hashes de asset); é
+só onde cada ficheiro vive e como importa os outros.

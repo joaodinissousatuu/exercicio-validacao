@@ -1,7 +1,7 @@
 import { Container, Group, Text, ThemeIcon, Title } from '@mantine/core';
 import { IconUserCircle } from '@tabler/icons-react';
 import { FIXED_USER_NAME } from './constants.js';
-import { MeetingsScreen } from './components/MeetingsScreen.jsx';
+import { MeetingsScreen } from './features/meetings/components/MeetingsScreen.jsx';
 
 function TopBar() {
   return (
