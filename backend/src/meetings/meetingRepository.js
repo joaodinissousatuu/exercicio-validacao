@@ -47,12 +47,13 @@ async function findForUser(userId) {
 }
 
 /**
- * Reuniões já aceites por um utilizador, opcionalmente excluindo uma reunião
- * (usado ao aceitar um convite, para não comparar a reunião consigo própria).
+ * Agenda de um utilizador: as reuniões que ele já aceitou (ver GLOSSARY.md).
+ * Opcionalmente exclui uma reunião — usado ao aceitar um convite, para não
+ * comparar a reunião consigo própria se o convite já estava aceite.
  * @param {string} userId
  * @param {string} [excludeMeetingId]
  */
-async function findAcceptedForUser(userId, excludeMeetingId) {
+async function findAgendaOf(userId, excludeMeetingId) {
   const filter = {
     participants: { $elemMatch: { userId, status: 'accepted' } },
   };
@@ -98,7 +99,7 @@ async function save(meeting) {
 export const meetingRepository = {
   isValidId,
   findForUser,
-  findAcceptedForUser,
+  findAgendaOf,
   findById,
   findByIdWithDetails,
   create,

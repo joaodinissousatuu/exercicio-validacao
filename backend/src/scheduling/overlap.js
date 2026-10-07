@@ -1,43 +1,20 @@
-const MEETING_DURATION_MINUTES = 60;
-
 /**
- * @typedef {Object} TimeRange
+ * @typedef {Object} TimeSlot
+ * Bloco de tempo (ver GLOSSARY.md): o período que um compromisso ocupa na
+ * agenda de alguém, como intervalo semiaberto [start, end). Não sabe o que o
+ * ocupa (uma reunião ou outra coisa) nem quanto dura por defeito — quem o
+ * constrói é que decide isso (ver Meeting.timeSlot() em meetings/Meeting.js).
  * @property {Date} start
  * @property {Date} end
  */
 
 /**
- * Converte uma reunião (date + startTime) num intervalo [start, end),
- * assumindo a duração fixa de 1h.
- * @param {{ date: string, startTime: string }} meeting
- * @returns {TimeRange}
- */
-function toRange(meeting) {
-  const start = new Date(`${meeting.date}T${meeting.startTime}`);
-  const end = new Date(start.getTime() + MEETING_DURATION_MINUTES * 60 * 1000);
-  return { start, end };
-}
-
-/**
- * Verifica se dois intervalos de tempo se sobrepõem.
- * Sobreposição no limite (uma termina exatamente quando a outra começa) não conta.
- * @param {TimeRange} a
- * @param {TimeRange} b
+ * Verifica se dois blocos de tempo se sobrepõem.
+ * Sobreposição no limite (um termina exatamente quando o outro começa) não conta.
+ * @param {TimeSlot} a
+ * @param {TimeSlot} b
  * @returns {boolean}
  */
-function rangesOverlap(a, b) {
+export function overlap(a, b) {
   return a.start < b.end && b.start < a.end;
 }
-
-/**
- * Verifica se duas reuniões (cada uma com date + startTime, duração fixa de 1h)
- * têm conflito de horário.
- * @param {{ date: string, startTime: string }} meetingA
- * @param {{ date: string, startTime: string }} meetingB
- * @returns {boolean}
- */
-export function overlap(meetingA, meetingB) {
-  return rangesOverlap(toRange(meetingA), toRange(meetingB));
-}
-
-export { toRange };
