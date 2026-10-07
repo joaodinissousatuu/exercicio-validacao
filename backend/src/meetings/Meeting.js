@@ -1,5 +1,3 @@
-import mongoose from 'mongoose';
-
 /**
  * @typedef {Object} Participant
  * @property {string} userId - Referência ao User convidado.
@@ -7,7 +5,8 @@ import mongoose from 'mongoose';
  */
 
 /**
- * @typedef {Object} Meeting
+ * @typedef {Object} MeetingProps
+ * @property {string} [_id] - Identificador (ausente antes de gravado pelo repositório).
  * @property {string} title - Título da reunião.
  * @property {string} description - Descrição da reunião.
  * @property {string} date - Data da reunião (formato 'YYYY-MM-DD').
@@ -16,54 +15,15 @@ import mongoose from 'mongoose';
  * @property {Participant[]} participants - Lista de participantes, inclui o organizador (já aceite).
  */
 
-const participantSchema = new mongoose.Schema(
-  {
-    userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-    },
-    status: {
-      type: String,
-      enum: ['pending', 'accepted', 'declined'],
-      default: 'pending',
-      required: true,
-    },
-  },
-  { _id: false },
-);
-
-const meetingSchema = new mongoose.Schema({
-  title: {
-    type: String,
-    required: true,
-  },
-  description: {
-    type: String,
-    required: true,
-  },
-  date: {
-    type: String,
-    required: true,
-  },
-  startTime: {
-    type: String,
-    required: true,
-  },
-  organizerId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-  },
-  participants: {
-    type: [participantSchema],
-    required: true,
-  },
-});
-
 /**
- * Comportamento do agregado Meeting: quem pode ver a reunião, qual o estado
- * do convite de alguém, e como responder a um convite. Vive aqui para que a
+ * Agregado de domínio, sem qualquer dependência de Mongoose ou de outra
+ * tecnologia de persistência — meetingRepository.js é o único ficheiro que
+ * sabe traduzir entre isto e o documento gravado na base de dados
+ * (MeetingModel.js). Isolar assim a camada de Domínio da de Infraestrutura é
+ * o próprio padrão Layered Architecture do capítulo 4 do livro do Evans.
+ *
+ * Comportamento do agregado: quem pode ver a reunião, qual o estado do
+ * convite de alguém, e como responder a um convite. Vive aqui para que a
  * rota nunca mexa diretamente em `participants` de fora — só o próprio
  * agregado sabe como interpretar e alterar o seu estado interno.
  *
@@ -75,50 +35,61 @@ const meetingSchema = new mongoose.Schema({
  * de invocar respondToInvite().
  */
 
-/** Extrai o id de uma referência, populada ou não (ObjectId cru ou documento populado). */
+/** Extrai o id de uma referência, populada ou não (string crua ou objeto {_id, name, username}). */
 function idOf(value) {
   return String(value?._id ?? value);
 }
 
-/** @param {string} userId @returns {Participant | null} */
-meetingSchema.methods.findParticipant = function (userId) {
-  const target = String(userId);
-  return this.participants.find((p) => idOf(p.userId) === target) ?? null;
-};
+export class Meeting {
+  /** @param {MeetingProps} props */
+  constructor({ _id, title, description, date, startTime, organizerId, participants }) {
+    this._id = _id;
+    this.title = title;
+    this.description = description;
+    this.date = date;
+    this.startTime = startTime;
+    this.organizerId = organizerId;
+    this.participants = participants;
+  }
 
-/** @param {string} userId */
-meetingSchema.methods.isOrganizer = function (userId) {
-  return idOf(this.organizerId) === String(userId);
-};
+  /** @param {string} userId @returns {Participant | null} */
+  findParticipant(userId) {
+    const target = String(userId);
+    return this.participants.find((p) => idOf(p.userId) === target) ?? null;
+  }
 
-/** Organizador ou participante (convidado), independentemente do estado do convite. @param {string} userId */
-meetingSchema.methods.hasAccess = function (userId) {
-  return this.isOrganizer(userId) || this.findParticipant(userId) !== null;
-};
+  /** @param {string} userId */
+  isOrganizer(userId) {
+    return idOf(this.organizerId) === String(userId);
+  }
 
-/** @param {string} userId */
-meetingSchema.methods.isAcceptedBy = function (userId) {
-  return this.findParticipant(userId)?.status === 'accepted';
-};
+  /** Organizador ou participante (convidado), independentemente do estado do convite. @param {string} userId */
+  hasAccess(userId) {
+    return this.isOrganizer(userId) || this.findParticipant(userId) !== null;
+  }
 
-/** @param {string} userId */
-meetingSchema.methods.isPendingFor = function (userId) {
-  return this.findParticipant(userId)?.status === 'pending';
-};
+  /** @param {string} userId */
+  isAcceptedBy(userId) {
+    return this.findParticipant(userId)?.status === 'accepted';
+  }
 
-/**
- * Regista a resposta de um utilizador ao seu convite. Só muda o estado —
- * quem decide se pode fazê-lo (conflito de horário) é responsabilidade de
- * quem chama, através do serviço de domínio scheduling, não deste método.
- * @param {string} userId
- * @param {'accepted' | 'declined'} status
- * @returns {Participant | null} o participante atualizado, ou null se o utilizador não foi convidado
- */
-meetingSchema.methods.respondToInvite = function (userId, status) {
-  const participant = this.findParticipant(userId);
-  if (!participant) return null;
-  participant.status = status;
-  return participant;
-};
+  /** @param {string} userId */
+  isPendingFor(userId) {
+    return this.findParticipant(userId)?.status === 'pending';
+  }
 
-export const Meeting = mongoose.model('Meeting', meetingSchema);
+  /**
+   * Regista a resposta de um utilizador ao seu convite. Só muda o estado —
+   * quem decide se pode fazê-lo (conflito de horário) é responsabilidade de
+   * quem chama, através do serviço de domínio scheduling, não deste método.
+   * @param {string} userId
+   * @param {'accepted' | 'declined'} status
+   * @returns {Participant | null} o participante atualizado, ou null se o utilizador não foi convidado
+   */
+  respondToInvite(userId, status) {
+    const participant = this.findParticipant(userId);
+    if (!participant) return null;
+    participant.status = status;
+    return participant;
+  }
+}

@@ -2,9 +2,8 @@ import mongoose from 'mongoose';
 
 /**
  * Confirma que uma string tem o formato válido de um ObjectId do MongoDB.
- * Vive na camada de repositórios (não em utils/ nem domain/) porque depende
- * do Mongoose — essas outras camadas foram deliberadamente desenhadas para
- * não conhecer detalhes de infraestrutura/base de dados.
+ * Vive em shared/, não em users/ nem meetings/, por não ter vocabulário de
+ * negócio — é usada de forma idêntica pelos dois repositórios de domínio.
  * @param {string} id
  * @returns {boolean}
  */

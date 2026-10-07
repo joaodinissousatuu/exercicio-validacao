@@ -97,8 +97,14 @@ Cobre os três casos possíveis — sem sobreposição, sobreposição total e s
 O backend aplica os padrões táticos do DDD proporcionais à escala do projeto (entidade, objeto
 de valor, agregado, serviço de domínio, repositório), organizado em três **domínios de
 negócio** — `users/`, `meetings/` e `scheduling/` — em vez de por camada técnica (decisão
-detalhada em `SPEC.md`, secções 8 e 9; o histórico das duas rondas de revisão que levaram a
-esta estrutura está em `DOMAIN_MIGRATION.md`).
+detalhada em `SPEC.md`, secções 8 a 15; o histórico das duas rondas de revisão que levaram a
+esta estrutura está em `DOMAIN_MIGRATION.md`). `scheduling/` é o Core Subdomain do projeto (a
+regra de negócio principal do enunciado); `meetings/` é Supporting; `users/` é Generic — ver
+`SPEC.md` §10 para a classificação completa e para a razão de as rotas serem chamadas Serviço
+de Aplicação, não só "controladores finos". `Meeting`/`User` também deixaram de depender do
+Mongoose diretamente — são classes de domínio simples, com o schema de persistência à parte em
+`MeetingModel.js`/`UserModel.js` (`SPEC.md` §15), para a camada de Domínio ficar isolada de
+infraestrutura como o capítulo 4 do livro do Evans pede.
 
 - **`users/`** (identidade) — `User.js`, `userRepository.js` (esconde as queries Mongoose atrás
   de nomes que refletem o vocabulário do negócio) e `routes.js`. Não sabe nada sobre reuniões

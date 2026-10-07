@@ -21,7 +21,7 @@ meetingsRouter.get('/', async (req, res) => {
 
   const result = meetings.map((m) => {
     const conflict = m.isPendingFor(userId) ? hasConflict(m, acceptedMeetings, m._id) : false;
-    return { ...m.toObject(), hasConflict: conflict };
+    return { ...m, hasConflict: conflict };
   });
 
   res.json(result);
