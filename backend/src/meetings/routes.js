@@ -1,8 +1,8 @@
 import express from 'express';
-import { meetingRepository } from './meetingRepository.js';
+import { meetingRepository, ConcurrentModificationError } from './meetingRepository.js';
 import { userRepository } from '../users/userRepository.js';
 import { hasConflict } from '../scheduling/conflictService.js';
-import { meetingTimeSlot } from './Meeting.js';
+import { meetingTimeSlot, InvalidScheduleError, OrganizerCannotDeclineError } from './Meeting.js';
 
 export const meetingsRouter = express.Router();
 
@@ -41,7 +41,15 @@ meetingsRouter.post('/', async (req, res) => {
     return res.status(400).json({ error: 'title, description, date e startTime são obrigatórios.' });
   }
 
-  const slot = meetingTimeSlot({ date, startTime });
+  let slot;
+  try {
+    slot = meetingTimeSlot({ date, startTime });
+  } catch (err) {
+    if (err instanceof InvalidScheduleError) {
+      return res.status(400).json({ error: err.message });
+    }
+    throw err;
+  }
 
   if (slot.start.getTime() < Date.now()) {
     return res.status(400).json({ error: 'Data/hora da reunião não pode estar no passado.' });
@@ -132,7 +140,17 @@ meetingsRouter.patch('/:id/invites/:userId', async (req, res) => {
 
   // O agregado é quem sabe gravar a resposta ao seu próprio convite — a rota
   // já não mexe em `participants` diretamente (ver Meeting.js).
-  meeting.respondToInvite(userId, status);
-  await meetingRepository.save(meeting);
+  try {
+    meeting.respondToInvite(userId, status);
+    await meetingRepository.save(meeting);
+  } catch (err) {
+    if (err instanceof OrganizerCannotDeclineError) {
+      return res.status(403).json({ error: err.message });
+    }
+    if (err instanceof ConcurrentModificationError) {
+      return res.status(409).json({ error: err.message });
+    }
+    throw err;
+  }
   res.json(meeting);
 });

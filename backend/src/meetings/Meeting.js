@@ -1,3 +1,5 @@
+import { TimeSlot } from '../scheduling/overlap.js';
+
 /**
  * @typedef {Object} Participant
  * @property {string} userId - Referência ao User convidado.
@@ -45,17 +47,53 @@
  */
 export const MEETING_DURATION_MINUTES = 60;
 
+/** Data ou hora de início que não existe ou não está no formato YYYY-MM-DD / HH:mm. */
+export class InvalidScheduleError extends Error {
+  constructor() {
+    super('Data ou hora inválida: usa o formato YYYY-MM-DD para a data e HH:mm para a hora.');
+    this.name = 'InvalidScheduleError';
+  }
+}
+
+/** O organizador está sempre aceite na própria reunião (SPEC.md §5). */
+export class OrganizerCannotDeclineError extends Error {
+  constructor() {
+    super('O organizador não pode recusar a própria reunião.');
+    this.name = 'OrganizerCannotDeclineError';
+  }
+}
+
+const DATE_FORMAT = /^(\d{4})-(\d{2})-(\d{2})$/;
+const TIME_FORMAT = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
 /**
  * Bloco de tempo ocupado por uma reunião com esta data e hora de início.
  * Função à parte (e não só o método timeSlot()) porque, ao criar uma reunião,
  * é preciso o bloco de tempo antes de o agregado existir.
+ *
+ * Valida a data e a hora antes de as converter: o Date do JavaScript devolve
+ * uma data inválida para texto que não reconhece (o que fazia qualquer
+ * comparação de conflito dar `false`), e corrige em silêncio datas que não
+ * existem (2026-02-30 passaria a 2 de março).
  * @param {{ date: string, startTime: string }} schedule
- * @returns {import('../scheduling/overlap.js').TimeSlot}
+ * @returns {TimeSlot}
+ * @throws {InvalidScheduleError}
  */
 export function meetingTimeSlot({ date, startTime }) {
+  const dateParts = DATE_FORMAT.exec(String(date));
+  if (!dateParts || !TIME_FORMAT.test(String(startTime))) {
+    throw new InvalidScheduleError();
+  }
+
   const start = new Date(`${date}T${startTime}`);
+  const [, year, month, day] = dateParts.map(Number);
+  const sameDay = start.getFullYear() === year && start.getMonth() + 1 === month && start.getDate() === day;
+  if (!sameDay) {
+    throw new InvalidScheduleError();
+  }
+
   const end = new Date(start.getTime() + MEETING_DURATION_MINUTES * 60 * 1000);
-  return { start, end };
+  return new TimeSlot(start, end);
 }
 
 /** Extrai o id de uma referência, populada ou não (string crua ou objeto {_id, name, username}). */
@@ -107,16 +145,21 @@ export class Meeting {
   }
 
   /**
-   * Regista a resposta de um utilizador ao seu convite. Só muda o estado —
-   * quem decide se pode fazê-lo (conflito de horário) é responsabilidade de
-   * quem chama, através do serviço de domínio scheduling, não deste método.
+   * Regista a resposta de um utilizador ao seu convite. Protege a invariante
+   * que só este agregado consegue garantir — o organizador está sempre aceite
+   * na própria reunião. O conflito de horário, que cruza várias reuniões, é
+   * responsabilidade de quem chama, através do serviço de domínio scheduling.
    * @param {string} userId
    * @param {'accepted' | 'declined'} status
    * @returns {Participant | null} o participante atualizado, ou null se o utilizador não foi convidado
+   * @throws {OrganizerCannotDeclineError}
    */
   respondToInvite(userId, status) {
     const participant = this.findParticipant(userId);
     if (!participant) return null;
+    if (status === 'declined' && this.isOrganizer(userId)) {
+      throw new OrganizerCannotDeclineError();
+    }
     participant.status = status;
     return participant;
   }

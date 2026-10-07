@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { overlap } from './overlap.js';
+import { overlap, TimeSlot } from './overlap.js';
 
 // Blocos de tempo construídos à mão, com início e fim explícitos — o Scheduling
 // não sabe que as reuniões duram 1h (isso é regra de Meetings, testada em
 // meetings/Meeting.test.js).
 function slot(date, start, end) {
-  return { start: new Date(`${date}T${start}`), end: new Date(`${date}T${end}`) };
+  return new TimeSlot(new Date(`${date}T${start}`), new Date(`${date}T${end}`));
 }
 
 test('sem sobreposição: blocos em horas separadas no mesmo dia', () => {
@@ -49,4 +49,20 @@ test('blocos de durações diferentes: um bloco curto dentro de um longo é conf
   const longo = slot('2026-09-10', '09:00', '12:00');
   const curto = slot('2026-09-10', '10:00', '10:15');
   assert.equal(overlap(longo, curto), true);
+});
+
+test('TimeSlot: rejeita datas inválidas e blocos em que o fim não é depois do início', () => {
+  const valid = new Date('2026-09-10T09:00');
+  assert.throws(() => new TimeSlot(new Date('lixo'), valid), RangeError);
+  assert.throws(() => new TimeSlot(valid, new Date('lixo')), RangeError);
+  assert.throws(() => new TimeSlot(valid, valid), RangeError);
+  assert.throws(() => new TimeSlot(new Date('2026-09-10T10:00'), valid), RangeError);
+});
+
+test('TimeSlot: é imutável (Value Object)', () => {
+  const slot = new TimeSlot(new Date('2026-09-10T09:00'), new Date('2026-09-10T10:00'));
+  assert.throws(() => {
+    slot.start = new Date('2000-01-01');
+  }, TypeError);
+  assert.equal(Object.isFrozen(slot), true);
 });

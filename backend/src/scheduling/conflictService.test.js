@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { hasConflict } from './conflictService.js';
+import { TimeSlot } from './overlap.js';
 
 function slot(date, start, end) {
-  return { start: new Date(`${date}T${start}`), end: new Date(`${date}T${end}`) };
+  return new TimeSlot(new Date(`${date}T${start}`), new Date(`${date}T${end}`));
 }
 
 test('sem conflito: nenhum bloco da agenda se sobrepõe ao candidato', () => {

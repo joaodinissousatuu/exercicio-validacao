@@ -11,6 +11,26 @@ import { isValidId } from '../shared/objectId.js';
  */
 
 /**
+ * Outra pessoa gravou a mesma reunião entre o momento em que a lemos e o
+ * momento em que a tentámos gravar. Quem chama deve pedir para repetir.
+ */
+export class ConcurrentModificationError extends Error {
+  constructor() {
+    super('A reunião foi alterada por outra pessoa entretanto. Tenta outra vez.');
+    this.name = 'ConcurrentModificationError';
+  }
+}
+
+/**
+ * Versão (`__v` do documento Mongoose) com que cada agregado foi lido, para o
+ * save() detetar gravações concorrentes (optimistic locking). Fica aqui, e
+ * não como campo do Meeting, porque é um detalhe de persistência: o
+ * agregado não precisa de saber que existe, e não aparece nas respostas da API.
+ * @type {WeakMap<Meeting, number>}
+ */
+const loadedVersions = new WeakMap();
+
+/**
  * Uma referência a User vem crua (ObjectId/string) ou populada
  * ({ _id, name, username }, via .populate()) — mantém-se a mesma forma que
  * a rota já esperava antes desta separação, só que agora explícita aqui.
@@ -22,9 +42,9 @@ function refToDomain(value) {
   return String(value);
 }
 
-/** @param {import('./MeetingModel.js').MeetingModel} doc */
+/** @param {InstanceType<typeof import('./MeetingModel.js').MeetingModel>} doc - documento Mongoose devolvido por uma query */
 function toDomain(doc) {
-  return new Meeting({
+  const meeting = new Meeting({
     _id: String(doc._id),
     title: doc.title,
     description: doc.description,
@@ -33,6 +53,8 @@ function toDomain(doc) {
     organizerId: refToDomain(doc.organizerId),
     participants: doc.participants.map((p) => ({ userId: refToDomain(p.userId), status: p.status })),
   });
+  loadedVersions.set(meeting, doc.__v ?? 0);
+  return meeting;
 }
 
 /**
@@ -90,10 +112,31 @@ async function create(data) {
  * Grava as alterações feitas a um agregado Meeting já existente. Hoje só
  * `participants[].status` muda depois da criação (via respondToInvite), por
  * isso é o único campo atualizado aqui.
- * @param {Meeting} meeting
+ *
+ * O agregado é gravado inteiro, por isso duas respostas em simultâneo à
+ * mesma reunião apagavam-se uma à outra (a segunda gravava a lista de
+ * participantes que tinha lido antes da primeira). Agora a gravação só
+ * acontece se o documento ainda estiver na versão em que foi lido; se outra
+ * pessoa gravou entretanto, nada é gravado e lança ConcurrentModificationError.
+ * @param {Meeting} meeting - tem de ter sido lido por este repositório
+ * @throws {ConcurrentModificationError}
  */
 async function save(meeting) {
-  await MeetingModel.updateOne({ _id: meeting._id }, { $set: { participants: meeting.participants } });
+  const version = loadedVersions.get(meeting);
+  if (version === undefined) {
+    throw new Error('save() recebeu um Meeting que não foi lido por este repositório.');
+  }
+
+  // Um documento gravado sem `__v` (fora do Mongoose) conta como versão 0.
+  const versionFilter = version === 0 ? { $in: [0, null] } : version;
+  const result = await MeetingModel.updateOne(
+    { _id: meeting._id, __v: versionFilter },
+    { $set: { participants: meeting.participants }, $inc: { __v: 1 } },
+  );
+  if (result.matchedCount === 0) {
+    throw new ConcurrentModificationError();
+  }
+  loadedVersions.set(meeting, version + 1);
 }
 
 export const meetingRepository = {
