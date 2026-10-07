@@ -812,3 +812,25 @@ enviada pela API (um DTO). Afinal não exigia:
 idênticas nos 30 pedidos dos cenários das secções 16-19. O JSON de seis respostas
 (lista, os três detalhes populados, aceitar e criar) foi comparado **byte a byte** e é igual. O
 frontend, verificado no Chromium, mostra o mesmo que antes, sem erros na consola.
+
+## 22. Integração contínua (GitHub Actions)
+
+**Decisão:** acrescentar um workflow de CI (`.github/workflows/ci.yml`) que corre em cada pull
+request e em cada push para o `main`.
+
+**Porquê:** até aqui os testes só corriam quando alguém se lembrava de os correr. Com dois PRs
+seguidos a mexer no mesmo código (secções 17-21), é fácil um PR partir algo que outro testou.
+
+**O que corre** (dois jobs em paralelo, Node 22):
+- **Backend:** `npm ci`, `npm test` (52 unitários) e `npm run test:integration` (30 de integração,
+  com MongoDB em memória). O binário do MongoDB (~120 MB) fica em cache entre execuções, com a
+  chave ligada ao `package-lock.json`.
+- **Frontend:** `npm ci`, `npm run lint` e `npm run build`.
+
+Um push novo para o mesmo PR cancela a execução anterior. O workflow só tem permissão de leitura
+sobre o repositório. Foi validado com `actionlint`, e os mesmos passos foram corridos localmente a
+partir de um clone limpo antes do primeiro push.
+
+**Fora do âmbito:** testes ponta a ponta do frontend no CI (falta escrevê-los) e a verificação de
+tipos (`tsc`), que ainda tem erros antigos por resolver (faltam os tipos do Node, e há anotações do
+Mongoose por corrigir) e falharia sempre.
