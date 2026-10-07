@@ -1,11 +1,8 @@
 import { Button, Card, Group, Stack, Text } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
-import { FIXED_USER_ID } from '../../../constants.js';
 import { StatusBadge } from './StatusBadge.jsx';
 
 export function MeetingCard({ meeting, showActions, responding, onOpen, onAccept, onDecline }) {
-  const myParticipant = meeting.participants.find((p) => p.userId === FIXED_USER_ID);
-
   return (
     <Card withBorder padding="md" radius="md">
       <Stack gap="xs">
@@ -19,7 +16,7 @@ export function MeetingCard({ meeting, showActions, responding, onOpen, onAccept
               {meeting.date} às {meeting.startTime}
             </Text>
           </Stack>
-          {myParticipant && <StatusBadge status={myParticipant.status} />}
+          {meeting.myInviteStatus && <StatusBadge status={meeting.myInviteStatus} />}
         </Group>
 
         {showActions && meeting.hasConflict && (

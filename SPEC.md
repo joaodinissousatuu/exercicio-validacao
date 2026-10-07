@@ -264,14 +264,14 @@ só uma marcação do que já existe, destacando o que é central e silenciando 
 **O núcleo, e nada mais:**
 
 ```
-scheduling/overlap.js         → TimeSlot, overlap()           — o bloco de tempo e a matemática
-scheduling/conflictService.js → hasConflict(candidate, agenda)
-meetings/Meeting.js           → timeSlot(), isAcceptedBy(), isPendingFor(), respondToInvite()
-meetings/routes.js            → as ~6 linhas à volta de hasConflict() em POST / e PATCH /invites
+scheduling/TimeSlot.js        → TimeSlot.overlaps()           — o bloco de tempo e a matemática
+scheduling/Agenda.js          → Agenda.conflictsWith(candidate)
+meetings/Meeting.js           → timeSlot(), agendaOf(), isAcceptedBy(), respondToInvite()
+meetings/routes.js            → as ~6 linhas à volta de conflictsWith() em POST / e PATCH /invites
 ```
 
-(Atualizado pela secção 16: `toRange()`/`rangesOverlap()` passaram a `Meeting.timeSlot()` e
-`overlap()`, e `hasConflict` deixou de receber `excludeMeetingId`.)
+(Atualizado pelas secções 16 e 18: `toRange()`/`rangesOverlap()` passaram a `Meeting.timeSlot()`
+e `TimeSlot.overlaps()`, e `conflictService.hasConflict()` passou a `Agenda.conflictsWith()`.)
 
 Se um leitor só tivesse tempo de ler quatro coisas neste repositório antes de o avaliar, seriam
 estas. Tudo o resto — `users/`, os componentes React, os hooks de React Query, os middlewares —
@@ -297,9 +297,12 @@ Resposta `200`: `Meeting[]`, cada um:
   "title": "string", "description": "string", "date": "YYYY-MM-DD", "startTime": "HH:mm",
   "organizerId": "string",
   "participants": [{ "userId": "string", "status": "pending | accepted | declined" }],
+  "myInviteStatus": "pending | accepted | declined",
   "hasConflict": false
 }
 ```
+`myInviteStatus` é o estado do convite do utilizador atual nesta reunião (acrescentado na secção
+18, para o frontend não ter de o procurar em `participants`).
 `hasConflict` só é calculado (`true`/`false`) quando o convite do utilizador atual está
 `pending`; caso contrário vem sempre `false`.
 
@@ -495,3 +498,101 @@ chamando a API diretamente — o formulário do frontend usa campos `date`/`time
 `GET /meetings` falhar com `500` para quem a tem, porque o seu bloco de tempo já não se consegue
 construir. O `seed.js` apaga todas as reuniões, por isso uma base de dados criada a partir dele
 não tem este problema.
+
+## 18. Parte III: conceitos implícitos tornados explícitos, e Supple Design
+
+**Decisão:** aplicar os padrões da Parte III do livro do Evans (*Refactoring Toward Deeper
+Insight*) onde o código tinha conceitos sem nome ou interfaces que escondiam a intenção — e
+registar onde um padrão desta parte foi considerado e **não** aplicado, e porquê.
+
+### 1. A Agenda passa a existir no código (Refactoring Toward Deeper Insight)
+
+A regra central vivia num serviço de domínio, `conflictService.hasConflict(candidate, agenda)`,
+justificado por "nenhum agregado tem, sozinho, a informação para decidir isto" (secção 9). Era
+verdade para o `Meeting` — mas o objeto que tem essa informação já existia no vocabulário (a
+agenda, desde a secção 16) e não no código. Dado o nome, a regra passa a ser comportamento dele:
+
+- `scheduling/Agenda.js` (novo, substitui `conflictService.js`) — Value Object imutável com os
+  blocos de tempo aceites, e `conflictsWith(candidate)`.
+- `meetings/Meeting.js` → `agendaOf(meetings)` monta a agenda a partir de reuniões aceites;
+  `meetingRepository.findAgendaOf()` passa a devolver uma `Agenda`.
+
+O serviço de domínio deixa de ser preciso. É o caso típico do capítulo 9: um serviço que existia
+porque faltava um conceito ao modelo.
+
+### 2. Closure of Operations e Intention-Revealing Interfaces no bloco de tempo
+
+`overlap(a, b)` passa a `TimeSlot.overlaps(other)`: uma operação fechada sobre o próprio Value
+Object, que recebe um `TimeSlot` e não precisa de mais nada. `scheduling/overlap.js` passa a
+`scheduling/TimeSlot.js`, porque o ficheiro já só tinha o Value Object.
+
+### 3. Estado do convite como conceito explícito
+
+As strings `'pending'`, `'accepted'` e `'declined'` estavam repetidas no agregado, no schema
+Mongoose, na query do repositório, nas rotas e no seed. `meetings/InviteStatus.js` (novo) é a
+única fonte, com `isInviteResponse()` para a regra "uma resposta é aceitar ou recusar". Os
+valores não mudam (são os da Published Language, secção 13).
+
+### 4. `respondToInvite()` passa a revelar a intenção (Intention-Revealing Interfaces, CQS)
+
+- Antes devolvia `null` em silêncio quando o utilizador não tinha sido convidado; agora lança
+  `NotInvitedError`.
+- Antes misturava comando e consulta (mudava o estado e devolvia o participante); agora é um
+  comando puro, e o estado consulta-se com o novo `inviteStatusOf(userId)`.
+- Recusa respostas que não sejam aceitar ou recusar (`TypeError`), em vez de gravar qualquer
+  valor.
+
+### 5. Assertions: o agregado verifica as suas invariantes
+
+O construtor do `Meeting` passa a verificar e lança `InvalidMeetingError` se:
+- um utilizador aparecer mais do que uma vez em `participants` (a regra "um convite por
+  utilizador" da secção 5 só era garantida por um `Set` dentro da rota);
+- o organizador não for participante com o convite aceite;
+- um estado de convite não for um valor de `InviteStatus`.
+
+Para isto proteger a gravação e não só a leitura, `POST /meetings` constrói o `Meeting` **antes**
+de gravar, e `meetingRepository.create()` passa a receber o agregado em vez de dados soltos (o que
+também acaba com a assimetria entre `create(data)` e `save(meeting)`). A rota já garante estas
+condições, por isso as asserções não disparam em uso normal: apanham erros de programação, e
+respondem `500` se dispararem.
+
+### 6. O frontend deixa de duplicar regras do agregado
+
+`MeetingsScreen.jsx` e `MeetingCard.jsx` procuravam o utilizador atual em `participants` para
+saber o estado do seu convite — a mesma pergunta que `Meeting.inviteStatusOf()` responde.
+`GET /meetings` passa a incluir `myInviteStatus` (mudança aditiva ao contrato, secção 13), e o
+frontend usa-o em vez de reimplementar a procura. `MeetingCard.jsx` deixa de precisar de saber
+quem é o utilizador fixo.
+
+### Considerado e não aplicado: Specification
+
+A regra "uma reunião conta para a agenda de X" aparece em dois sítios: `Meeting.isAcceptedBy(X)`
+(em memória, em `GET /meetings`) e a query de `findAgendaOf` (em MongoDB, em `POST` e `PATCH`). O
+padrão Specification juntaria as duas num objeto com `isSatisfiedBy(meeting)` e uma tradução para
+query. Não foi aplicado: a regra é uma comparação, e a tradução para query obrigaria o domínio a
+conhecer o formato de filtros do MongoDB (ou a construir um tradutor genérico), complexidade
+desproporcional para uma regra que cabe numa linha. Em vez disso, a query documenta que é a
+tradução de `isAcceptedBy()`, e o glossário tem uma só definição de agenda. Se surgirem mais
+regras de seleção (filtros, que o enunciado lista como extra), a decisão deve ser revista.
+
+### O que fica por fazer
+
+- **`participants` continua a ser um array público e mutável.** As invariantes são verificadas na
+  construção, mas `meeting.participants.push(...)` continua possível. Torná-lo privado (`#`) faria
+  `res.json(meeting)` deixar de o serializar; resolver isto passa por separar o agregado da forma
+  como é enviado na API (DTO), o que é uma mudança maior.
+- **A criação da reunião continua na rota** (montar a lista de participantes, o organizador
+  aceite, remover duplicados). O sítio natural é uma Factory no `Meeting` (Parte II).
+- **A corrida entre agregados** (secção 17) mantém-se: a `Agenda` é agora um conceito explícito,
+  mas é um Value Object calculado, não um agregado com a sua própria consistência.
+
+**Testes:** 35/35 (antes 28). `scheduling/` passa a `TimeSlot.test.js` e `Agenda.test.js` (mais um
+teste: a `Agenda` é imutável); `Meeting.test.js` ganha 6 (invariantes, `inviteStatusOf`,
+respostas inválidas, `agendaOf`) e os de `respondToInvite` passam a verificar o erro e o comando
+puro.
+
+**Sem mudança de comportamento:** com MongoDB real, `seed.js` e `server.js` verdadeiros, o código
+antes e depois desta secção dá respostas idênticas no cenário de ponta a ponta das secções 16-17,
+nas reproduções dos bugs da secção 17 e no teste de concorrência. O frontend foi verificado num
+browser (Chromium) com backend e base de dados reais: os separadores, as etiquetas de estado, o
+aviso de conflito e aceitar um convite comportam-se exatamente como antes, sem erros na consola.

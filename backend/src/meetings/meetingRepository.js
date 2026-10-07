@@ -1,5 +1,6 @@
 import { MeetingModel } from './MeetingModel.js';
-import { Meeting } from './Meeting.js';
+import { Meeting, agendaOf } from './Meeting.js';
+import { InviteStatus } from './InviteStatus.js';
 import { isValidId } from '../shared/objectId.js';
 
 /**
@@ -69,21 +70,24 @@ async function findForUser(userId) {
 }
 
 /**
- * Agenda de um utilizador: as reuniões que ele já aceitou (ver GLOSSARY.md).
+ * Agenda de um utilizador: os blocos de tempo das reuniões que ele já aceitou
+ * (ver GLOSSARY.md). A query é a tradução para MongoDB da mesma regra que
+ * Meeting.isAcceptedBy() decide em memória — se uma mudar, a outra também.
  * Opcionalmente exclui uma reunião — usado ao aceitar um convite, para não
  * comparar a reunião consigo própria se o convite já estava aceite.
  * @param {string} userId
  * @param {string} [excludeMeetingId]
+ * @returns {Promise<import('../scheduling/Agenda.js').Agenda>}
  */
 async function findAgendaOf(userId, excludeMeetingId) {
   const filter = {
-    participants: { $elemMatch: { userId, status: 'accepted' } },
+    participants: { $elemMatch: { userId, status: InviteStatus.ACCEPTED } },
   };
   if (excludeMeetingId) {
     filter._id = { $ne: excludeMeetingId };
   }
   const docs = await MeetingModel.find(filter);
-  return docs.map(toDomain);
+  return agendaOf(docs.map(toDomain));
 }
 
 /** @param {string} id */
@@ -101,10 +105,15 @@ async function findByIdWithDetails(id) {
 }
 
 /**
- * @param {{ title: string, description: string, date: string, startTime: string, organizerId: any, participants: { userId: any, status: string }[] }} data
+ * Grava uma reunião nova. Recebe o agregado já construído — e por isso já
+ * verificado pelas invariantes do construtor —, não dados soltos: nada que o
+ * Meeting recuse chega à base de dados.
+ * @param {Meeting} meeting - ainda sem `_id`
+ * @returns {Promise<Meeting>} a mesma reunião, com o `_id` atribuído
  */
-async function create(data) {
-  const doc = await MeetingModel.create(data);
+async function create(meeting) {
+  const { title, description, date, startTime, organizerId, participants } = meeting;
+  const doc = await MeetingModel.create({ title, description, date, startTime, organizerId, participants });
   return toDomain(doc);
 }
 

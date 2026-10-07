@@ -1,9 +1,11 @@
-import { TimeSlot } from '../scheduling/overlap.js';
+import { TimeSlot } from '../scheduling/TimeSlot.js';
+import { Agenda } from '../scheduling/Agenda.js';
+import { InviteStatus, isInviteResponse } from './InviteStatus.js';
 
 /**
  * @typedef {Object} Participant
  * @property {string} userId - Referência ao User convidado.
- * @property {'pending' | 'accepted' | 'declined'} status - Estado do convite deste participante (ver GLOSSARY.md: o convite não é uma entidade à parte, é este estado).
+ * @property {import('./InviteStatus.js').InviteStatusValue} status - Estado do convite deste participante (ver GLOSSARY.md: o convite não é uma entidade à parte, é este estado).
  */
 
 /**
@@ -32,9 +34,14 @@ import { TimeSlot } from '../scheduling/overlap.js';
  * Fica deliberadamente de fora: decidir SE aceitar entra em conflito de
  * horário com outras reuniões. Essa regra cruza vários agregados Meeting ao
  * mesmo tempo (a candidata contra as já aceites de outras reuniões), e um
- * agregado não tem, sozinho, os dados para a decidir — por isso continua no
- * serviço de domínio scheduling/conflictService.js, chamado pela rota antes
+ * agregado não tem, sozinho, os dados para a decidir — quem decide é a
+ * Agenda do utilizador (scheduling/Agenda.js), consultada pela rota antes
  * de invocar respondToInvite().
+ *
+ * Invariantes, verificadas no construtor (Assertions — ver SPEC.md §18):
+ * - cada utilizador aparece no máximo uma vez em `participants`;
+ * - o organizador é participante, com o convite aceite;
+ * - todos os estados de convite são valores de InviteStatus.
  *
  * Termos (reunião, organizador, participante, convite, agenda, bloco de
  * tempo) seguem GLOSSARY.md.
@@ -52,6 +59,23 @@ export class InvalidScheduleError extends Error {
   constructor() {
     super('Data ou hora inválida: usa o formato YYYY-MM-DD para a data e HH:mm para a hora.');
     this.name = 'InvalidScheduleError';
+  }
+}
+
+/** Uma reunião construída com dados que violam as suas invariantes — erro de programação, não do utilizador. */
+export class InvalidMeetingError extends Error {
+  /** @param {string} reason */
+  constructor(reason) {
+    super(`Reunião inválida: ${reason}`);
+    this.name = 'InvalidMeetingError';
+  }
+}
+
+/** Resposta a um convite de quem não foi convidado para a reunião. */
+export class NotInvitedError extends Error {
+  constructor() {
+    super('Não foste convidado para esta reunião.');
+    this.name = 'NotInvitedError';
   }
 }
 
@@ -96,6 +120,17 @@ export function meetingTimeSlot({ date, startTime }) {
   return new TimeSlot(start, end);
 }
 
+/**
+ * Agenda de um utilizador a partir das reuniões que ele aceitou. Vive em
+ * Meetings, não em Scheduling: é aqui que se sabe que uma reunião aceite é um
+ * compromisso, e qual o bloco de tempo que ocupa.
+ * @param {Meeting[]} acceptedMeetings
+ * @returns {Agenda}
+ */
+export function agendaOf(acceptedMeetings) {
+  return new Agenda(acceptedMeetings.map((m) => m.timeSlot()));
+}
+
 /** Extrai o id de uma referência, populada ou não (string crua ou objeto {_id, name, username}). */
 function idOf(value) {
   return String(value?._id ?? value);
@@ -111,6 +146,21 @@ export class Meeting {
     this.startTime = startTime;
     this.organizerId = organizerId;
     this.participants = participants;
+    this.#assertInvariants();
+  }
+
+  #assertInvariants() {
+    const ids = this.participants.map((p) => idOf(p.userId));
+    if (new Set(ids).size !== ids.length) {
+      throw new InvalidMeetingError('um utilizador aparece mais do que uma vez nos participantes.');
+    }
+    const validStatuses = Object.values(InviteStatus);
+    if (this.participants.some((p) => !validStatuses.includes(p.status))) {
+      throw new InvalidMeetingError('estado de convite desconhecido.');
+    }
+    if (this.inviteStatusOf(idOf(this.organizerId)) !== InviteStatus.ACCEPTED) {
+      throw new InvalidMeetingError('o organizador tem de ser participante, com o convite aceite.');
+    }
   }
 
   /** Bloco de tempo que esta reunião ocupa na agenda de quem a aceitou. */
@@ -134,33 +184,52 @@ export class Meeting {
     return this.isOrganizer(userId) || this.findParticipant(userId) !== null;
   }
 
-  /** @param {string} userId */
+  /**
+   * Estado do convite de um utilizador nesta reunião, ou null se não foi convidado.
+   * @param {string} userId
+   * @returns {import('./InviteStatus.js').InviteStatusValue | null}
+   */
+  inviteStatusOf(userId) {
+    return this.findParticipant(userId)?.status ?? null;
+  }
+
+  /** A reunião conta para a agenda deste utilizador (ver GLOSSARY.md). @param {string} userId */
   isAcceptedBy(userId) {
-    return this.findParticipant(userId)?.status === 'accepted';
+    return this.inviteStatusOf(userId) === InviteStatus.ACCEPTED;
   }
 
   /** @param {string} userId */
   isPendingFor(userId) {
-    return this.findParticipant(userId)?.status === 'pending';
+    return this.inviteStatusOf(userId) === InviteStatus.PENDING;
   }
 
   /**
    * Regista a resposta de um utilizador ao seu convite. Protege a invariante
    * que só este agregado consegue garantir — o organizador está sempre aceite
    * na própria reunião. O conflito de horário, que cruza várias reuniões, é
-   * responsabilidade de quem chama, através do serviço de domínio scheduling.
+   * responsabilidade de quem chama, através da Agenda do utilizador.
+   *
+   * Comando puro: muda o estado e não devolve nada (para saber o resultado,
+   * pergunta-se depois com inviteStatusOf()). Quando não pode cumprir, diz
+   * porquê com um erro, em vez de devolver null em silêncio.
    * @param {string} userId
    * @param {'accepted' | 'declined'} status
-   * @returns {Participant | null} o participante atualizado, ou null se o utilizador não foi convidado
+   * @returns {void}
+   * @throws {TypeError} se `status` não for uma resposta (aceitar ou recusar)
+   * @throws {NotInvitedError}
    * @throws {OrganizerCannotDeclineError}
    */
   respondToInvite(userId, status) {
+    if (!isInviteResponse(status)) {
+      throw new TypeError(`Resposta a convite inválida: ${status}`);
+    }
     const participant = this.findParticipant(userId);
-    if (!participant) return null;
-    if (status === 'declined' && this.isOrganizer(userId)) {
+    if (!participant) {
+      throw new NotInvitedError();
+    }
+    if (status === InviteStatus.DECLINED && this.isOrganizer(userId)) {
       throw new OrganizerCannotDeclineError();
     }
     participant.status = status;
-    return participant;
   }
 }

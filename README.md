@@ -86,9 +86,9 @@ Usei JSDoc (`@typedef`, `@param`, `@returns`) nos ficheiros mais críticos — o
 
 ### A matemática da sobreposição
 
-A fórmula em `scheduling/overlap.js` (inalterada desde a entrega inicial):
+A fórmula em `scheduling/TimeSlot.js` (`TimeSlot.overlaps()`, inalterada desde a entrega inicial):
 ```
-overlap(A, B) = A.inicio < B.fim && B.inicio < A.fim
+A.overlaps(B) = A.inicio < B.fim && B.inicio < A.fim
 ```
 Cobre os três casos possíveis — sem sobreposição, sobreposição total e sobreposição parcial. É lógica pura, sem acesso a nada do resto da aplicação, o que a torna fácil de testar isoladamente.
 
@@ -97,7 +97,7 @@ Cobre os três casos possíveis — sem sobreposição, sobreposição total e s
 O backend aplica os padrões táticos do DDD proporcionais à escala do projeto (entidade, objeto
 de valor, agregado, serviço de domínio, repositório), organizado em três **domínios de
 negócio** — `users/`, `meetings/` e `scheduling/` — em vez de por camada técnica (decisão
-detalhada em `SPEC.md`, secções 8 a 17; o histórico das duas rondas de revisão que levaram a
+detalhada em `SPEC.md`, secções 8 a 18; o histórico das duas rondas de revisão que levaram a
 esta estrutura está em `DOMAIN_MIGRATION.md`). `scheduling/` é o Core Subdomain do projeto (a
 regra de negócio principal do enunciado); `meetings/` é Supporting; `users/` é Generic — ver
 `SPEC.md` §10 para a classificação completa e para a razão de as rotas serem chamadas Serviço
@@ -115,13 +115,13 @@ infraestrutura como o capítulo 4 do livro do Evans pede.
   `participants` diretamente, pergunta ao agregado. `meetingRepository.js` esconde as queries
   Mongoose (`findForUser`, `findAgendaOf`, etc.). É também dono da duração fixa de 1h e de
   converter data + hora de início num bloco de tempo (`Meeting.timeSlot()`).
-- **`scheduling/`** (conflito de horário) — `overlap.js` e `conflictService.js`; um domínio à
-  parte, não uma pasta dentro de Meetings, porque a lógica é genérica sobre blocos de tempo
-  (`{ start, end }`) e não conhece o conceito de "reunião", nem a sua duração. Decide se um bloco
-  de tempo candidato entra em conflito com a agenda do utilizador — uma regra que cruza
-  vários agregados `Meeting` ao mesmo tempo, por isso vive num serviço de domínio, não como
-  método do agregado. `meetings/routes.js` é o único ponto que liga os dois domínios, chamando
-  `hasConflict()` antes de `Meeting.respondToInvite()`.
+- **`scheduling/`** (conflito de horário) — `TimeSlot.js` e `Agenda.js`, dois Value Objects; um
+  domínio à parte, não uma pasta dentro de Meetings, porque a lógica é genérica sobre blocos de
+  tempo e não conhece o conceito de "reunião", nem a sua duração. A `Agenda` de um utilizador
+  decide se um bloco de tempo candidato entra em conflito com os que ele já aceitou
+  (`agenda.conflictsWith(slot)`) — uma regra que cruza vários agregados `Meeting`, por isso não
+  é método do agregado (até à `SPEC.md` §18 vivia num serviço de domínio, `conflictService`).
+  `meetings/routes.js` consulta a agenda antes de chamar `Meeting.respondToInvite()`.
 - **`shared/objectId.js`** — validação de formato de ObjectId, partilhada pelos três domínios; a
   única peça sem vocabulário de negócio.
 - **`middleware/`** — inalterado; fica fora de `users/` porque a sua função é pipeline HTTP, não
@@ -137,12 +137,12 @@ código estão em `GLOSSARY.md`, junto com as assunções que ainda precisam de 
 um especialista do domínio.
 
 O contrato da API não mudou com esta reestruturação — mesmos URLs, métodos e formas de
-resposta; verificado com os testes automáticos (hoje 28/28 a passar, incluindo
+resposta; verificado com os testes automáticos (hoje 35/35 a passar, incluindo
 `meetings/Meeting.test.js`, sem base de dados) e testes manuais a todos os endpoints.
 
 ### `hasConflict` calculado no backend
 
-O `GET /meetings` devolve, para cada reunião com o convite `pending`, um campo `hasConflict` já calculado pelo servidor (via `conflictService`). O frontend mostra esse aviso diretamente, sem reimplementar a lógica — assim existe uma única fonte de verdade para a regra mais importante do projeto, em vez de duas versões (backend e frontend) que um dia poderiam divergir.
+O `GET /meetings` devolve, para cada reunião com o convite `pending`, um campo `hasConflict` já calculado pelo servidor (pela `Agenda` do utilizador), e para todas um campo `myInviteStatus` com o estado do convite do utilizador atual. O frontend mostra esse aviso diretamente, sem reimplementar a lógica — assim existe uma única fonte de verdade para a regra mais importante do projeto, em vez de duas versões (backend e frontend) que um dia poderiam divergir.
 
 ### Stack do frontend
 
@@ -182,7 +182,7 @@ Duas correções feitas numa primeira revisão ao backend, antes de qualquer fee
 - **Autenticação real**: numa aplicação em produção, substituiria o utilizador fixo por um sistema de contas a sério — registo, palavras-passe com hash (nunca em texto simples), e sessão/token para manter o login entre pedidos. Não o fiz aqui porque o próprio enunciado desaconselha investir tempo nisso, e o foco do exercício está na regra de conflito de horários.
 - **Concorrência**: a verificação de conflito faz leitura e escrita sem qualquer tipo de bloqueio — em teoria, dois pedidos de aceitação em simultâneo, para reuniões que se sobrepõem, poderiam ambos passar a verificação antes de qualquer um gravar o resultado. Resolveria isto com uma transação do MongoDB.
 - **Distribuição do projeto**: adicionaria um `docker-compose.yml` com uma instância local do MongoDB, para quem for avaliar isto não depender das minhas credenciais pessoais do Atlas.
-- **Mais testes**: atualmente só a lógica pura tem testes automáticos — `overlap.js`, `conflictService.js` (domínio Scheduling) e o comportamento do agregado `Meeting` (`meetings/Meeting.test.js`). Adicionaria testes de integração às rotas, sobretudo à verificação de conflito no `POST /meetings` e no `PATCH /invites`.
+- **Mais testes**: atualmente só a lógica pura tem testes automáticos — `TimeSlot.js`, `Agenda.js` (domínio Scheduling) e o comportamento do agregado `Meeting` (`meetings/Meeting.test.js`). Adicionaria testes de integração às rotas, sobretudo à verificação de conflito no `POST /meetings` e no `PATCH /invites`.
 - **Escalabilidade da pesquisa de utilizadores**: com a lista de utilizadores pequena, o endpoint devolve todos quando a pesquisa está vazia. Numa aplicação com muitos mais utilizadores, adicionaria paginação ou um mínimo de caracteres antes de pesquisar.
 
 ## Ferramentas de IA

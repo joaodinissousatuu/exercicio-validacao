@@ -1,20 +1,25 @@
 import express from 'express';
 import { meetingRepository, ConcurrentModificationError } from './meetingRepository.js';
 import { userRepository } from '../users/userRepository.js';
-import { hasConflict } from '../scheduling/conflictService.js';
-import { meetingTimeSlot, InvalidScheduleError, OrganizerCannotDeclineError } from './Meeting.js';
+import {
+  Meeting,
+  agendaOf,
+  meetingTimeSlot,
+  InvalidScheduleError,
+  NotInvitedError,
+  OrganizerCannotDeclineError,
+} from './Meeting.js';
+import { InviteStatus, isInviteResponse } from './InviteStatus.js';
 
 export const meetingsRouter = express.Router();
 
-/** Blocos de tempo de uma agenda, na forma que o Scheduling entende. */
-function slotsOf(agenda) {
-  return agenda.map((m) => m.timeSlot());
-}
-
 // GET /meetings — reuniões do utilizador atual (organizadas + convidado, todos os estados).
-// Cada reunião com o meu convite 'pending' vem com hasConflict: indica se aceitá-la
-// entraria em conflito com a minha agenda (mesma regra de
-// scheduling/conflictService.js, única fonte de verdade — o frontend não reimplementa esta lógica).
+// Cada reunião vem com:
+// - myInviteStatus: o estado do meu convite nesta reunião, para o frontend não ter de o
+//   procurar em `participants` (era conhecimento do agregado duplicado no frontend);
+// - hasConflict: se o meu convite está pendente, indica se aceitá-lo entraria em conflito
+//   com a minha agenda (scheduling/Agenda.js, única fonte de verdade — o frontend não
+//   reimplementa esta lógica).
 meetingsRouter.get('/', async (req, res) => {
   const userId = String(req.currentUser._id);
 
@@ -23,11 +28,11 @@ meetingsRouter.get('/', async (req, res) => {
   // "Quem está aceite" e "o meu convite está pendente" são perguntas sobre o
   // próprio agregado Meeting — pedimos-lhas a ele, em vez de ler `participants` daqui.
   // Uma reunião pendente nunca está na agenda, por isso não há nada a excluir.
-  const agenda = slotsOf(meetings.filter((m) => m.isAcceptedBy(userId)));
+  const agenda = agendaOf(meetings.filter((m) => m.isAcceptedBy(userId)));
 
   const result = meetings.map((m) => {
-    const conflict = m.isPendingFor(userId) ? hasConflict(m.timeSlot(), agenda) : false;
-    return { ...m, hasConflict: conflict };
+    const conflict = m.isPendingFor(userId) ? agenda.conflictsWith(m.timeSlot()) : false;
+    return { ...m, myInviteStatus: m.inviteStatusOf(userId), hasConflict: conflict };
   });
 
   res.json(result);
@@ -61,7 +66,7 @@ meetingsRouter.post('/', async (req, res) => {
   // Assunções), por isso a criação tem de ser verificada contra a agenda do
   // organizador — senão o auto-accept contornava a regra de conflito.
   const organizerAgenda = await meetingRepository.findAgendaOf(organizerId);
-  if (hasConflict(slot, slotsOf(organizerAgenda))) {
+  if (organizerAgenda.conflictsWith(slot)) {
     return res.status(409).json({ error: 'Conflito de horário com outra reunião já aceite.' });
   }
 
@@ -77,11 +82,15 @@ meetingsRouter.post('/', async (req, res) => {
   }
 
   const participants = [
-    { userId: organizerId, status: 'accepted' },
-    ...invitedIds.map((userId) => ({ userId, status: 'pending' })),
+    { userId: organizerId, status: InviteStatus.ACCEPTED },
+    ...invitedIds.map((userId) => ({ userId, status: InviteStatus.PENDING })),
   ];
 
-  const meeting = await meetingRepository.create({ title, description, date, startTime, organizerId, participants });
+  // O agregado é construído antes de ser gravado, por isso as suas invariantes
+  // (ver Meeting.js) são verificadas antes de qualquer coisa chegar à base de dados.
+  const meeting = await meetingRepository.create(
+    new Meeting({ title, description, date, startTime, organizerId, participants }),
+  );
   res.status(201).json(meeting);
 });
 
@@ -114,7 +123,7 @@ meetingsRouter.patch('/:id/invites/:userId', async (req, res) => {
     return res.status(404).json({ error: 'Reunião ou utilizador não encontrado.' });
   }
 
-  if (status !== 'accepted' && status !== 'declined') {
+  if (!isInviteResponse(status)) {
     return res.status(400).json({ error: "status deve ser 'accepted' ou 'declined'." });
   }
 
@@ -127,13 +136,14 @@ meetingsRouter.patch('/:id/invites/:userId', async (req, res) => {
     return res.status(404).json({ error: 'Reunião não encontrada.' });
   }
 
-  if (!meeting.findParticipant(userId)) {
-    return res.status(404).json({ error: 'Não foste convidado para esta reunião.' });
+  // Verificado antes do conflito, para quem não foi convidado receber 404 e não 409.
+  if (meeting.inviteStatusOf(userId) === null) {
+    return res.status(404).json({ error: new NotInvitedError().message });
   }
 
-  if (status === 'accepted') {
+  if (status === InviteStatus.ACCEPTED) {
     const agenda = await meetingRepository.findAgendaOf(userId, meeting._id);
-    if (hasConflict(meeting.timeSlot(), slotsOf(agenda))) {
+    if (agenda.conflictsWith(meeting.timeSlot())) {
       return res.status(409).json({ error: 'Conflito de horário com outra reunião já aceite.' });
     }
   }
