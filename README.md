@@ -97,11 +97,14 @@ Cobre os três casos possíveis — sem sobreposição, sobreposição total e s
 O backend aplica os padrões táticos do DDD proporcionais à escala do projeto (entidade, objeto
 de valor, agregado, serviço de domínio, repositório), organizado em três **domínios de
 negócio** — `users/`, `meetings/` e `scheduling/` — em vez de por camada técnica (decisão
-detalhada em `SPEC.md`, secções 8 a 18; o histórico das duas rondas de revisão que levaram a
-esta estrutura está em `DOMAIN_MIGRATION.md`). `scheduling/` é o Core Subdomain do projeto (a
-regra de negócio principal do enunciado); `meetings/` é Supporting; `users/` é Generic — ver
-`SPEC.md` §10 para a classificação completa e para a razão de as rotas serem chamadas Serviço
-de Aplicação, não só "controladores finos". `Meeting`/`User` também deixaram de depender do
+detalhada em `SPEC.md`, secções 8 a 19; o histórico das duas rondas de revisão que levaram a
+esta estrutura está em `DOMAIN_MIGRATION.md`). As três pastas são **Módulos** de um único
+Bounded Context (ver `CONTEXT_MAP.md`). O **Core Domain** é a política de compromissos —
+`meetings/commitmentPolicy.js` (criar compromete o organizador, aceitar compromete quem aceita,
+recusar nunca é bloqueado) e `scheduling/Agenda.js`; a matemática da sobreposição
+(`scheduling/TimeSlot.js`) é um mecanismo genérico ao serviço dele; o resto de `meetings/` é
+Supporting, e `users/` é Generic — ver `SPEC.md` §19. As rotas são o Serviço de Aplicação: leem o
+pedido, chamam a política e traduzem o resultado para HTTP, sem decidir regras. `Meeting`/`User` também deixaram de depender do
 Mongoose diretamente — são classes de domínio simples, com o schema de persistência à parte em
 `MeetingModel.js`/`UserModel.js` (`SPEC.md` §15), para a camada de Domínio ficar isolada de
 infraestrutura como o capítulo 4 do livro do Evans pede.
@@ -115,6 +118,8 @@ infraestrutura como o capítulo 4 do livro do Evans pede.
   `participants` diretamente, pergunta ao agregado. `meetingRepository.js` esconde as queries
   Mongoose (`findForUser`, `findAgendaOf`, etc.). É também dono da duração fixa de 1h e de
   converter data + hora de início num bloco de tempo (`Meeting.timeSlot()`).
+  `commitmentPolicy.js` é o Core Domain: a política que decide quando criar ou aceitar uma
+  reunião entra em conflito com a agenda de alguém (`SPEC.md` §19).
 - **`scheduling/`** (conflito de horário) — `TimeSlot.js` e `Agenda.js`, dois Value Objects; um
   domínio à parte, não uma pasta dentro de Meetings, porque a lógica é genérica sobre blocos de
   tempo e não conhece o conceito de "reunião", nem a sua duração. A `Agenda` de um utilizador
@@ -137,7 +142,7 @@ código estão em `GLOSSARY.md`, junto com as assunções que ainda precisam de 
 um especialista do domínio.
 
 O contrato da API não mudou com esta reestruturação — mesmos URLs, métodos e formas de
-resposta; verificado com os testes automáticos (hoje 35/35 a passar, incluindo
+resposta; verificado com os testes automáticos (hoje 47/47 a passar, incluindo
 `meetings/Meeting.test.js`, sem base de dados) e testes manuais a todos os endpoints.
 
 ### `hasConflict` calculado no backend
@@ -180,9 +185,9 @@ Duas correções feitas numa primeira revisão ao backend, antes de qualquer fee
 ## Se tivesses mais tempo
 
 - **Autenticação real**: numa aplicação em produção, substituiria o utilizador fixo por um sistema de contas a sério — registo, palavras-passe com hash (nunca em texto simples), e sessão/token para manter o login entre pedidos. Não o fiz aqui porque o próprio enunciado desaconselha investir tempo nisso, e o foco do exercício está na regra de conflito de horários.
-- **Concorrência**: a verificação de conflito faz leitura e escrita sem qualquer tipo de bloqueio — em teoria, dois pedidos de aceitação em simultâneo, para reuniões que se sobrepõem, poderiam ambos passar a verificação antes de qualquer um gravar o resultado. Resolveria isto com uma transação do MongoDB.
+- **Concorrência entre reuniões diferentes**: respostas em simultâneo à *mesma* reunião já estão protegidas (concorrência otimista, `SPEC.md` §17). Mas a mesma pessoa a aceitar, ao mesmo tempo, dois convites de reuniões *diferentes* que se sobrepõem ainda pode passar nas duas verificações. Com um só utilizador fixo isto é praticamente impossível, por isso ficou como decisão consciente (`SPEC.md` §19). Com vários utilizadores reais, resolveria com uma versão por agenda de utilizador, gravada na mesma transação MongoDB que a resposta ao convite.
 - **Distribuição do projeto**: adicionaria um `docker-compose.yml` com uma instância local do MongoDB, para quem for avaliar isto não depender das minhas credenciais pessoais do Atlas.
-- **Mais testes**: atualmente só a lógica pura tem testes automáticos — `TimeSlot.js`, `Agenda.js` (domínio Scheduling) e o comportamento do agregado `Meeting` (`meetings/Meeting.test.js`). Adicionaria testes de integração às rotas, sobretudo à verificação de conflito no `POST /meetings` e no `PATCH /invites`.
+- **Mais testes**: os testes automáticos cobrem o domínio sem base de dados — `TimeSlot.js`, `Agenda.js`, o agregado `Meeting` e a política de compromissos (`commitmentPolicy.js`, onde vivem as regras de conflito ao criar e ao aceitar). Faltam testes de integração das rotas e dos repositórios com uma base de dados real (por exemplo com `mongodb-memory-server`), sobretudo para a concorrência otimista do `save()`.
 - **Escalabilidade da pesquisa de utilizadores**: com a lista de utilizadores pequena, o endpoint devolve todos quando a pesquisa está vazia. Numa aplicação com muitos mais utilizadores, adicionaria paginação ou um mínimo de caracteres antes de pesquisar.
 
 ## Ferramentas de IA

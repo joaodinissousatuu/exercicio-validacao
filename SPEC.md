@@ -152,7 +152,7 @@ backend/src/
 | Agregado | `Meeting` + `participants` embutidos | Sim |
 | Serviço de domínio | `meetings/conflictService.js` | Sim |
 | Repositório | `users/userRepository.js`, `meetings/meetingRepository.js` | Sim |
-| Bounded Context | `users/` vs. `meetings/` | Sim — dois domínios, separados por pasta e por responsabilidade |
+| Bounded Context | `users/` vs. `meetings/` | Sim — dois domínios, separados por pasta e por responsabilidade **(errado — corrigido na §19: são Módulos de um só Bounded Context)** |
 | Evento de domínio | — | Não aplicado — não há efeitos secundários/notificações no projeto |
 
 > Estrutura e tabela acima refletem o estado logo após esta primeira ronda. A secção 9 (abaixo)
@@ -214,6 +214,10 @@ domínios e as rotas finas já cumpriam este papel, só nunca tinham sido nomead
 
 **Classificação dos subdomínios:**
 
+> **Revista na secção 19:** a tabela abaixo classifica pastas inteiras, e põe a matemática da
+> sobreposição no Core. A §19 corrige isso: o Core é a política de compromissos
+> (`meetings/commitmentPolicy.js` + `scheduling/Agenda.js`), e `TimeSlot` é um Cohesive Mechanism.
+
 | Domínio | Classificação | Porquê |
 |---|---|---|
 | `scheduling/` | **Core Subdomain** | É a razão de ser do exercício — a secção 4.1 do enunciado chama-lhe "regra de negócio principal", a única regra tratada como obrigatória e central. |
@@ -226,7 +230,10 @@ devolvem a resposta, e nunca decidem uma regra de negócio por conta própria. A
 importa manter: um Serviço de Aplicação *orquestra*; quem *decide* é sempre
 `scheduling/conflictService.js` ou os métodos do agregado `Meeting`.
 
-**Fora do âmbito, e porquê:** o Mapa de Contexto (Context Map) não ganha aqui nenhum dos padrões
+**Fora do âmbito, e porquê** *(revisto na §19 e em `CONTEXT_MAP.md`: dentro do backend há um só
+contexto, por isso de facto não há padrões a aplicar entre `users/` e `meetings/`; mas há relações
+reais com contextos de fora — o frontend e a identidade — que este parágrafo não considerou)*: o
+Mapa de Contexto (Context Map) não ganha aqui nenhum dos padrões
 nomeados (Shared Kernel, Conformist, Anticorruption Layer, etc.) — esses descrevem relações entre
 equipas ou sistemas diferentes, e este projeto é um único código, uma pessoa. Rotular a leitura de
 `meetings` a `users` com um desses nomes seria inventar complexidade organizacional que não
@@ -264,17 +271,18 @@ só uma marcação do que já existe, destacando o que é central e silenciando 
 **O núcleo, e nada mais:**
 
 ```
-scheduling/TimeSlot.js        → TimeSlot.overlaps()           — o bloco de tempo e a matemática
-scheduling/Agenda.js          → Agenda.conflictsWith(candidate)
-meetings/Meeting.js           → timeSlot(), agendaOf(), isAcceptedBy(), respondToInvite()
-meetings/routes.js            → as ~6 linhas à volta de conflictsWith() em POST / e PATCH /invites
+meetings/commitmentPolicy.js  → scheduleMeeting(), respondToInvite(), wouldConflict()  — a política
+scheduling/Agenda.js          → Agenda.conflictsWith(candidate)                         — a agenda
+meetings/Meeting.js           → agendaOf(), isAcceptedBy(), timeSlot()                  — o que conta
+scheduling/TimeSlot.js        → TimeSlot.overlaps()   — mecanismo genérico usado pelo Core (Cohesive Mechanism)
 ```
 
-(Atualizado pelas secções 16 e 18: `toRange()`/`rangesOverlap()` passaram a `Meeting.timeSlot()`
-e `TimeSlot.overlaps()`, e `conflictService.hasConflict()` passou a `Agenda.conflictsWith()`.)
+(Atualizado pelas secções 16, 18 e 19. Até à §19, a última linha deste núcleo era "as ~6 linhas à
+volta do conflito em `meetings/routes.js`" — parte do Core vivia nas rotas Express. A §19 juntou-a
+em `commitmentPolicy.js`.)
 
-Se um leitor só tivesse tempo de ler quatro coisas neste repositório antes de o avaliar, seriam
-estas. Tudo o resto — `users/`, os componentes React, os hooks de React Query, os middlewares —
+Se um leitor só tivesse tempo de ler três ficheiros neste repositório antes de o avaliar, seriam
+os três primeiros. Tudo o resto — `users/`, os componentes React, os hooks de React Query, os middlewares —
 existe para dar a estas linhas um sítio onde correr, não para acrescentar regra de negócio nova.
 
 ## 13. Published Language
@@ -282,8 +290,10 @@ existe para dar a estas linhas um sítio onde correr, não para acrescentar regr
 **Decisão:** formalizar o contrato de cada endpoint — pedido, resposta e erros — num formato
 explícito, em vez da tabela informal da secção 3.
 
-**Porquê:** é a peça de Distillation que falta do capítulo 14 (Maintaining Model Integrity), e
-liga diretamente a "documentação da API", que o próprio enunciado lista como extra opcional
+**Porquê:** é um padrão de Context Map do capítulo 14 (Maintaining Model Integrity) — a língua
+partilhada que um Open Host Service publica para quem o consome (ver `CONTEXT_MAP.md`). *(Até à
+§19 esta frase chamava-lhe, por engano, uma peça de Distillation, que é o capítulo 15.)* Liga
+diretamente a "documentação da API", que o próprio enunciado lista como extra opcional
 (secção 10). Formato JSON, sem introduzir OpenAPI/Swagger — proporcional à escala do projeto.
 
 ### `GET /users?q=texto`
@@ -334,6 +344,7 @@ a mesma forma de erro em qualquer resposta não-2xx do projeto.
 
 **Decisão:** nomear explicitamente `users/`, `meetings/` e `scheduling/` como o padrão Módulos
 (capítulo 5 do livro do Evans), além de já serem chamados "domínios"/"Bounded Contexts".
+*(A §19 corrige esta última parte: são só Módulos, de um único Bounded Context.)*
 
 **Porquê:** ao comparar o projeto com a Parte II completa do livro (capítulos 4-6), ficou claro
 que estas três pastas cumprem também o padrão Módulos — fronteiras de pacote que seguem o modelo
@@ -596,3 +607,113 @@ antes e depois desta secção dá respostas idênticas no cenário de ponta a po
 nas reproduções dos bugs da secção 17 e no teste de concorrência. O frontend foi verificado num
 browser (Chromium) com backend e base de dados reais: os separadores, as etiquetas de estado, o
 aviso de conflito e aceitar um convite comportam-se exatamente como antes, sem erros na consola.
+
+## 19. Parte IV: um só Bounded Context, Context Map, e o Core Domain no sítio certo
+
+**Decisão:** corrigir a forma como o projeto aplicava o design estratégico do livro do Evans
+(Parte IV). Ao contrário das secções 10, 11, 12 e 14, que acrescentaram nomes, esta corrige nomes
+que estavam **errados**, e muda o código num ponto: a política que é o Core Domain sai das rotas
+Express para um módulo próprio.
+
+### 1. Um só Bounded Context, com três Módulos
+
+As secções 8, 9 e 14 chamavam Bounded Contexts a `users/`, `meetings/` e `scheduling/`. Evans
+define um Bounded Context como a fronteira dentro da qual **um modelo** e a sua linguagem são
+válidos. Aqui há um só modelo: uma base de dados, `Meeting` a referenciar `User` diretamente,
+`.populate()` a atravessar as pastas, e cada termo com um só significado em todas
+(`GLOSSARY.md`). As três pastas são **Módulos** (cap. 5) de um único Bounded Context, *Gestão de
+Reuniões*. A confusão vinha de misturar **subdomínio** (uma área do problema, que pode ser Core,
+Supporting ou Generic) com **Bounded Context** (uma fronteira da solução): classificar as pastas
+como subdomínios (secção 10) não as torna contextos separados.
+
+### 2. Context Map: as relações que existem são com o que está fora
+
+A secção 10 recusava o Context Map por ser "um único código, uma pessoa". Dentro do backend é
+verdade, porque com um só contexto não há relações a mapear. Mas havia relações reais com o que
+está **fora** do backend, que nunca tinham sido escritas. Estão agora em `CONTEXT_MAP.md`:
+
+- **Backend → Frontend:** Open Host Service com Published Language (o contrato da §13); o frontend
+  é Conformist, porque adota o modelo tal como vem, sem tradução.
+- **Identidade → Backend:** hoje um utilizador fixo; com autenticação real seria um contexto
+  upstream, e `middleware/currentUser.js` (o único sítio que lê a identidade do pedido) seria a
+  Anticorruption Layer.
+- **MongoDB** é infraestrutura, não um contexto.
+
+### 3. Correção factual na secção 13
+
+A §13 dizia que a Published Language é "a peça de Distillation que falta do capítulo 14". Published
+Language é um padrão de **Context Map** (cap. 14, *Maintaining Model Integrity*); Distillation é o
+capítulo 15. Corrigido no próprio texto da §13.
+
+### 4. O Core Domain é a política, não a matemática — e passa a viver num só sítio
+
+A secção 10 classificava `scheduling/` como Core Subdomain. Mas o que lá estava, a fórmula
+`A.início < B.fim && B.início < A.fim`, é um algoritmo genérico de intervalos, que qualquer
+calendário usa. Evans chama a isto um **Cohesive Mechanism**: precisamente o que se separa do Core
+para o Core ficar mais claro. O que é específico deste negócio, e o próprio Domain Vision
+Statement (§11) descreve, é a **política de compromissos**:
+
+- criar uma reunião compromete o organizador (fica aceite), por isso tem de caber na agenda dele;
+- aceitar um convite compromete quem aceita, por isso tem de caber na agenda dele;
+- recusar nunca é bloqueado;
+- só convites aceites contam para a agenda.
+
+Esta política estava espalhada: metade nas rotas Express (`meetings/routes.js`), que a própria §12
+listava como parte do núcleo, e sem testes automáticos. Agora vive toda em
+`meetings/commitmentPolicy.js` (**Segregated Core**), sem HTTP nem base de dados:
+
+- `scheduleMeeting(pedido, agendaDoOrganizador)`: a Factory da reunião. Valida data e hora, recusa
+  o passado e o conflito, e constrói o `Meeting` com o organizador aceite e os convidados
+  pendentes (sem duplicados, e sem o organizador a convidar-se a si próprio).
+- `respondToInvite(reunião, utilizador, resposta, agenda)`: confirma que o utilizador foi
+  convidado, só verifica o conflito ao aceitar, e delega no agregado.
+- `wouldConflict(reunião, utilizador, agenda)`: o aviso da lista, só para convites pendentes.
+
+As rotas ficam como Serviço de Aplicação a sério (§10): leem o pedido, vão buscar a agenda e os
+utilizadores aos repositórios, chamam a política e traduzem os erros de domínio para HTTP numa só
+tabela (`HTTP_STATUS_BY_ERROR`).
+
+**Classificação revista** (substitui a tabela da §10):
+
+| Parte | Classificação | Onde |
+|---|---|---|
+| Política de compromissos + Agenda | **Core Domain** | `meetings/commitmentPolicy.js`, `scheduling/Agenda.js` |
+| Sobreposição de blocos de tempo | **Cohesive Mechanism** (genérico, usado pelo Core) | `scheduling/TimeSlot.js` |
+| Reuniões, convites, persistência, API | **Supporting** | resto de `meetings/` |
+| Utilizadores e pesquisa | **Generic** | `users/` |
+
+O Highlighted Core (§12) foi atualizado para esta classificação.
+
+### 5. A corrida entre reuniões diferentes: decisão consciente de não a resolver
+
+A §17 deixou em aberto: a mesma pessoa a aceitar, ao mesmo tempo, dois convites de reuniões
+diferentes que se sobrepõem. Cada aceitação lê a agenda, não vê a outra, e as duas passam. É uma
+invariante que atravessa vários agregados (`Meeting`s diferentes), e Evans dá duas saídas:
+redesenhar a fronteira (fazer da agenda de cada utilizador um agregado próprio, com versão, gravado
+na mesma transação que a resposta ao convite) ou aceitar consistência eventual.
+
+**Decisão: não resolver agora.** Com um único utilizador fixo, sem login (§2), a corrida exige que
+a mesma pessoa carregue em "Aceitar" em dois convites no mesmo instante. O custo de a fechar é
+alto: um agregado novo, uma coleção nova e transações MongoDB, que pedem um replica set. Com
+vários utilizadores reais a decisão deve ser revista, e o caminho é o primeiro (agenda como
+agregado com versão, numa transação).
+
+### 6. Large-Scale Structure: não se aplica
+
+Os padrões do capítulo 16 (Responsibility Layers, Knowledge Level, System Metaphor, etc.) servem
+para organizar sistemas com muitos contextos e módulos. Com um contexto e três módulos, impor um
+deles seria estrutura sem problema para resolver.
+
+**Testes:** 47/47 (antes 35). `meetings/commitmentPolicy.test.js` (novo, 12 testes) cobre as regras
+do Core sem HTTP nem base de dados: organizador aceite e convidados pendentes, duplicados e
+auto-convite, conflito ao criar, limite exato, a agenda dos convidados não ser verificada ao criar,
+passado e data inválida, conflito ao aceitar, recusar com conflito, quem não foi convidado, as
+regras do agregado, e o aviso da lista.
+
+**Sem mudança de comportamento:** com MongoDB real, `seed.js` e `server.js` verdadeiros, o código
+antes e depois desta secção dá respostas idênticas em 30 pedidos HTTP: o cenário de ponta a ponta
+das secções 16-18, as reproduções dos bugs da §17, e um cenário novo de casos-limite (convidado
+inexistente, ids repetidos ou com formato inválido, campo em falta, quem não foi convidado a
+responder, responder por outra pessoa, estado inválido, reunião inexistente, mudar de ideias, acesso
+negado, pedido sem `X-User-Id`). O teste de concorrência da §17 continua sem respostas perdidas,
+e o frontend, verificado no Chromium, mostra o mesmo que antes, sem erros na consola.
