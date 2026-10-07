@@ -20,7 +20,7 @@ export function useTestServer() {
     ctx.mongo = await MongoMemoryServer.create({ instance: { launchTimeout: 60_000 } });
     await mongoose.connect(ctx.mongo.getUri('buildtoo-test'));
     await new Promise((resolve) => {
-      ctx.server = app.listen(0, '127.0.0.1', resolve);
+      ctx.server = app.listen(0, '127.0.0.1', () => resolve());
     });
     ctx.baseUrl = `http://127.0.0.1:${ctx.server.address().port}`;
   });

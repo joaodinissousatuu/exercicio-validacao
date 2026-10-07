@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   backend:
-    name: Backend (testes unitários e de integração)
+    name: Backend (tipos, testes unitários e de integração)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -31,6 +31,9 @@ jobs:
           cache-dependency-path: backend/package-lock.json
 
       - run: npm ci
+
+      - name: Verificação de tipos (JSDoc + tsc)
+        run: npm run typecheck
 
       - name: Testes unitários (domínio, sem base de dados)
         run: npm test

@@ -119,6 +119,8 @@ Optei por esta abordagem para não gastar tempo que poderia faltar para aplicar 
 
 Usei JSDoc (`@typedef`, `@param`, `@returns`) nos ficheiros mais críticos — os modelos `User`/`Meeting` e a função de conflito, pois pesquisei e conclui que poderia ser uma mais valia no processo de desenvolvimento do código: avisa de incompatibilidades de forma enquanto o código é escrito, mas **não tem efeito nenhum em tempo de execução** — não valida nada quando a aplicação está a correr. Essa validação a sério (campos obrigatórios, tipos, valores permitidos) é feita pelo `Mongoose`, através do schema. Optámos por não adotar `TypeScript` completo no projeto para não acrescentar uma curva de aprendizagem extra, dado o tempo disponível e a falta de experiência prévia em `JavaScript`/`React`.
 
+As anotações JSDoc do backend são verificadas pelo compilador do TypeScript, sem converter o código (`cd backend && npm run typecheck`), e essa verificação corre também no CI (`SPEC.md` §24).
+
 ### A matemática da sobreposição
 
 A fórmula em `scheduling/TimeSlot.js` (`TimeSlot.overlaps()`, inalterada desde a entrega inicial):

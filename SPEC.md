@@ -831,7 +831,7 @@ Um push novo para o mesmo PR cancela a execução anterior. O workflow só tem p
 sobre o repositório. Foi validado com `actionlint`, e os mesmos passos foram corridos localmente a
 partir de um clone limpo antes do primeiro push.
 
-**Fora do âmbito:** testes ponta a ponta do frontend no CI (falta escrevê-los) e a verificação de
+**Fora do âmbito** *(ambos resolvidos depois: testes ponta a ponta na §23, verificação de tipos na §24)*: testes ponta a ponta do frontend no CI (falta escrevê-los) e a verificação de
 tipos (`tsc`), que ainda tem erros antigos por resolver (faltam os tipos do Node, e há anotações do
 Mongoose por corrigir) e falharia sempre.
 
@@ -873,3 +873,38 @@ erro do backend não aparecer no formulário.
 **Versão do Playwright:** fixada em 1.56.1 (via `package-lock.json`). Corre no CI num job próprio,
 que instala o Chromium dessa versão e, se falhar, guarda o relatório com traces e capturas de ecrã
 como artefacto da execução.
+
+## 24. Verificação de tipos sem erros (e no CI)
+
+**Decisão:** pôr a verificação de tipos do backend a zero erros, acrescentá-la como script
+(`npm run typecheck`) e corrê-la no CI. O `jsconfig.json` tinha `checkJs` ligado desde a secção 7,
+mas acumulava 27 erros, por isso o editor mostrava código a vermelho e ninguém a podia usar como
+verificação.
+
+**O que eram os erros, e o que mudou:**
+- **Faltavam tipos de dependências** (22 erros): `@types/node` (para `process`, `node:test`,
+  `node:assert`) e `@types/express` (sem ele, o TypeScript via a app Express como uma `Function`
+  genérica). Ficam como dependências de desenvolvimento, com o próprio `typescript`.
+- **Anotações JSDoc erradas** (5): `toDomain` do `userRepository` anotava o parâmetro com o tipo do
+  *modelo* Mongoose em vez do *documento* (o mesmo erro já corrigido no `meetingRepository`, §17).
+- **O tipo das referências a utilizadores estava incompleto:** `organizerId` e
+  `participants[].userId` podem ser um id ou o utilizador populado (no detalhe da reunião). Passam a
+  ter o tipo `UserRef`, que diz isso.
+- **`req.currentUser` não tinha tipo:** `src/types/express.d.ts` declara o que o middleware
+  `currentUser.js` acrescenta ao pedido. Assim, um engano como `req.currentUser.nome` passa a ser
+  apanhado.
+- **Dependências sem tipos já não são analisadas:** `maxNodeModuleJsDepth: 0` impede o TypeScript de
+  analisar o JavaScript de pacotes sem tipos (como o `express-async-errors`), o que gerava erros em
+  `node_modules`.
+- **A pasta `test/`** (testes de integração e servidor e2e) passa a ser verificada também.
+
+**Um bug real encontrado pelos tipos:** com os tipos do Express, `req.query.q` passou a ter o tipo
+verdadeiro: texto, lista ou objeto. `GET /users?q=a&q=b` (lista) ou `?q[x]=a` (objeto) faziam o
+`.trim()` rebentar com erro `500`. Agora `q` só conta se for um texto simples; caso contrário é
+ignorado, como uma pesquisa sem termo. Foi reproduzido primeiro com um teste de integração a falhar
+(`500`), que agora passa.
+
+**Resultado:** `npm run typecheck` sem erros. Confirmado que continua a verificar a sério: um erro
+introduzido de propósito (`req.currentUser.nome`) é apanhado. Testes: 52 unitários, 31 de
+integração (+1, o do `q`) e 9 ponta a ponta, todos a passar. O CI corre a verificação de tipos antes
+dos testes do backend.
