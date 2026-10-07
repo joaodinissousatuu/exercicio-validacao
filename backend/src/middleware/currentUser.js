@@ -7,10 +7,11 @@ import { userRepository } from '../users/userRepository.js';
 export async function currentUser(req, res, next) {
   const userId = req.header('X-User-Id');
 
-  if (!userId || !userRepository.isValidId(userId)) {
+  if (!userId) {
     return res.status(401).json({ error: 'Header X-User-Id em falta ou inválido.' });
   }
 
+  // Um id com formato inválido também não corresponde a ninguém (findById devolve null).
   const user = await userRepository.findById(userId);
   if (!user) {
     return res.status(401).json({ error: 'Utilizador do X-User-Id não existe.' });
