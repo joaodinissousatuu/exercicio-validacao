@@ -184,6 +184,11 @@ export class Meeting {
     return this.isOrganizer(userId) || this.findParticipant(userId) !== null;
   }
 
+  /** Ids dos participantes convidados pelo organizador (todos menos ele). @returns {string[]} */
+  inviteeIds() {
+    return this.participants.map((p) => idOf(p.userId)).filter((id) => !this.isOrganizer(id));
+  }
+
   /**
    * Estado do convite de um utilizador nesta reunião, ou null se não foi convidado.
    * @param {string} userId

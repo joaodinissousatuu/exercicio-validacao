@@ -95,6 +95,9 @@ detalhadas em `SPEC.md`, secções 8 e 9.
 
 ## Estrutura final
 
+> Final destas duas rondas. Mudanças posteriores (ficheiros `*Model.js`, `InviteStatus.js`,
+> `commitmentPolicy.js`, e `scheduling/` com `TimeSlot.js` e `Agenda.js`) estão em `SPEC.md` §15-§19.
+
 ```
 backend/src/
 ├── users/
