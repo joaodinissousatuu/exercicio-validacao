@@ -6,9 +6,8 @@
  *
  * Value Object: definido só pelos seus valores, imutável, e sempre válido —
  * o construtor recusa datas inválidas e blocos em que o fim não é depois do
- * início, por isso nenhum TimeSlot que chegue a overlap() pode fazer a
- * comparação devolver `false` por engano (com uma data inválida, `<` dá
- * sempre `false`, e um conflito real passaria despercebido).
+ * início, por isso overlaps() nunca devolve `false` por engano (com uma data
+ * inválida, `<` dá sempre `false`, e um conflito real passaria despercebido).
  */
 export class TimeSlot {
   /**
@@ -26,19 +25,20 @@ export class TimeSlot {
     this.end = new Date(end);
     Object.freeze(this);
   }
+
+  /**
+   * Verifica se este bloco de tempo se sobrepõe a outro. Operação fechada
+   * sobre TimeSlot (Closure of Operations): recebe um bloco de tempo e não
+   * precisa de mais nada. Sobreposição no limite (um termina exatamente
+   * quando o outro começa) não conta.
+   * @param {TimeSlot} other
+   * @returns {boolean}
+   */
+  overlaps(other) {
+    return this.start < other.end && other.start < this.end;
+  }
 }
 
 function isValidDate(value) {
   return value instanceof Date && !Number.isNaN(value.getTime());
-}
-
-/**
- * Verifica se dois blocos de tempo se sobrepõem.
- * Sobreposição no limite (um termina exatamente quando o outro começa) não conta.
- * @param {TimeSlot} a
- * @param {TimeSlot} b
- * @returns {boolean}
- */
-export function overlap(a, b) {
-  return a.start < b.end && b.start < a.end;
 }

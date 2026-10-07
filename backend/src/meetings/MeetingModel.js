@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { InviteStatus } from './InviteStatus.js';
 
 /**
  * Schema Mongoose de Meeting — persistência pura, sem comportamento de domínio.
@@ -14,8 +15,8 @@ const participantSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['pending', 'accepted', 'declined'],
-      default: 'pending',
+      enum: Object.values(InviteStatus),
+      default: InviteStatus.PENDING,
       required: true,
     },
   },

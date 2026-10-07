@@ -5,6 +5,7 @@ import { connectDB } from './db.js';
 // script de arranque da base de dados, não uma operação de negócio.
 import { UserModel } from './users/UserModel.js';
 import { MeetingModel } from './meetings/MeetingModel.js';
+import { InviteStatus } from './meetings/InviteStatus.js';
 
 // Utilizador fixo da app (sem login) — o seu _id é o valor a usar no header X-User-Id.
 const FIXED_USER = { name: 'Ana Silva', username: 'ana.silva' };
@@ -46,7 +47,7 @@ async function seed() {
     date,
     startTime: '10:00',
     organizerId: fixedUser._id,
-    participants: [{ userId: fixedUser._id, status: 'accepted' }],
+    participants: [{ userId: fixedUser._id, status: InviteStatus.ACCEPTED }],
   });
 
   // Convite pendente que SOBREPÕE a reunião aceite acima (10:00-11:00) — organizado
@@ -59,8 +60,8 @@ async function seed() {
     startTime: '10:30',
     organizerId: carla._id,
     participants: [
-      { userId: carla._id, status: 'accepted' },
-      { userId: fixedUser._id, status: 'pending' },
+      { userId: carla._id, status: InviteStatus.ACCEPTED },
+      { userId: fixedUser._id, status: InviteStatus.PENDING },
     ],
   });
 
@@ -73,8 +74,8 @@ async function seed() {
     startTime: '15:00',
     organizerId: diogo._id,
     participants: [
-      { userId: diogo._id, status: 'accepted' },
-      { userId: fixedUser._id, status: 'pending' },
+      { userId: diogo._id, status: InviteStatus.ACCEPTED },
+      { userId: fixedUser._id, status: InviteStatus.PENDING },
     ],
   });
 

@@ -9,8 +9,10 @@ import { EmptyState, ErrorState, LoadingState } from '../../../shared/components
 import { CreateMeetingModal } from './CreateMeetingModal.jsx';
 import { MeetingDetailModal } from './MeetingDetailModal.jsx';
 
+// O estado do meu convite vem calculado pelo backend (myInviteStatus) — o frontend
+// não procura o utilizador em `participants`, para não duplicar regras do agregado.
 function isMyPending(meeting) {
-  return meeting.participants.some((p) => p.userId === FIXED_USER_ID && p.status === 'pending');
+  return meeting.myInviteStatus === 'pending';
 }
 
 export function MeetingsScreen() {
