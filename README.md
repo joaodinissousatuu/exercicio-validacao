@@ -34,6 +34,13 @@ Arrancar o servidor:
 
 A API fica disponível em http://localhost:3000
 
+**Se a lista de reuniões der erro 500** numa base de dados usada antes das validações atuais
+(reuniões criadas chamando a API diretamente, com data/hora inválida ou com o organizador a
+recusar a própria reunião), este comando lista as reuniões que o código já não aceita, sem
+alterar nada:
+
+    npm run check-data
+
 ### 2. Frontend
 
 Com o backend já a correr, noutro terminal:

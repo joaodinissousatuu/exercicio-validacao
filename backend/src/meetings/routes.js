@@ -51,8 +51,9 @@ meetingsRouter.get('/', async (req, res) => {
   // Uma reunião pendente nunca está na agenda, por isso não há nada a excluir.
   const agenda = agendaOf(meetings.filter((m) => m.isAcceptedBy(userId)));
 
+  // toJSON(): o spread de um Meeting não copia `participants` (é privado, SPEC §21).
   const result = meetings.map((m) => ({
-    ...m,
+    ...m.toJSON(),
     myInviteStatus: m.inviteStatusOf(userId),
     hasConflict: wouldConflict(m, userId, agenda),
   }));

@@ -15,13 +15,22 @@ function toDomain(doc) {
   return new User({ _id: String(doc._id), name: doc.name, username: doc.username });
 }
 
+/** Escapa os caracteres com significado especial numa expressão regular. */
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /**
  * Pesquisa utilizadores por username (case-insensitive, parcial).
  * Sem termo de pesquisa, devolve todos.
+ *
+ * O texto é procurado tal como foi escrito: é escapado antes de ir para o $regex,
+ * porque passá-lo direto fazia `(` ou `[` dar erro 500, `.` encontrar qualquer
+ * carácter, e permitia padrões que deixam a base de dados lenta (ReDoS).
  * @param {string} query
  */
 async function search(query) {
-  const filter = query ? { username: { $regex: query, $options: 'i' } } : {};
+  const filter = query ? { username: { $regex: escapeRegExp(query), $options: 'i' } } : {};
   const docs = await UserModel.find(filter);
   return docs.map(toDomain);
 }

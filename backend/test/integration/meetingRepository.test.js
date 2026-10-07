@@ -99,8 +99,8 @@ describe('create() e leitura', () => {
 
     assert.match(created._id, /^[0-9a-f]{24}$/);
     assert.deepEqual(
-      { ...read },
-      { ...meeting, _id: created._id },
+      read.toJSON(),
+      { ...meeting.toJSON(), _id: created._id },
     );
   });
 
