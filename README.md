@@ -1,5 +1,7 @@
 # Exercício de validação Buildtoo
 
+[![CI](https://github.com/joaodinissousatuu/exercicio-validacao/actions/workflows/ci.yml/badge.svg)](https://github.com/joaodinissousatuu/exercicio-validacao/actions/workflows/ci.yml)
+
 Aplicação de gestão de reuniões entre utilizadores. `React` (frontend) + `Node.js`/`Express`/`MongoDB` (backend).
 
 ## Como executar
@@ -75,6 +77,8 @@ não tocam na base de dados do `.env`):
 
 Na primeira execução, o `mongodb-memory-server` descarrega o binário do MongoDB (~120 MB, para
 `~/.cache/mongodb-binaries`); as seguintes usam essa cópia e demoram poucos segundos.
+
+As duas suites correm também no CI (`.github/workflows/ci.yml`), em cada pull request.
 
 ## Decisões técnicas
 
@@ -205,7 +209,7 @@ Duas correções feitas numa primeira revisão ao backend, antes de qualquer fee
 - **Autenticação real**: numa aplicação em produção, substituiria o utilizador fixo por um sistema de contas a sério — registo, palavras-passe com hash (nunca em texto simples), e sessão/token para manter o login entre pedidos. Não o fiz aqui porque o próprio enunciado desaconselha investir tempo nisso, e o foco do exercício está na regra de conflito de horários.
 - **Concorrência entre reuniões diferentes**: respostas em simultâneo à *mesma* reunião já estão protegidas (concorrência otimista, `SPEC.md` §17). Mas a mesma pessoa a aceitar, ao mesmo tempo, dois convites de reuniões *diferentes* que se sobrepõem ainda pode passar nas duas verificações. Com um só utilizador fixo isto é praticamente impossível, por isso ficou como decisão consciente (`SPEC.md` §19). Com vários utilizadores reais, resolveria com uma versão por agenda de utilizador, gravada na mesma transação MongoDB que a resposta ao convite.
 - **Distribuição do projeto**: adicionaria um `docker-compose.yml` com uma instância local do MongoDB, para quem for avaliar isto não depender das minhas credenciais pessoais do Atlas.
-- **Mais testes**: há testes unitários do domínio (`npm test`) e de integração da API e dos repositórios com MongoDB real (`npm run test:integration`, `SPEC.md` §20). Faltam testes ponta a ponta do frontend (por exemplo com Playwright) e uma pipeline de CI que corra as duas suites em cada pull request.
+- **Mais testes**: há testes unitários do domínio (`npm test`) e de integração da API e dos repositórios com MongoDB real (`npm run test:integration`, `SPEC.md` §20). As duas suites, o lint e o build do frontend correm no CI (GitHub Actions) em cada pull request e em cada push para o `main` (`SPEC.md` §22). Faltam testes ponta a ponta do frontend (por exemplo com Playwright).
 - **Escalabilidade da pesquisa de utilizadores**: com a lista de utilizadores pequena, o endpoint devolve todos quando a pesquisa está vazia. Numa aplicação com muitos mais utilizadores, adicionaria paginação ou um mínimo de caracteres antes de pesquisar.
 
 ## Ferramentas de IA
