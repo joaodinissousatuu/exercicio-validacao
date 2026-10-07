@@ -1,7 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import mongoose from 'mongoose';
-import { Meeting, meetingTimeSlot, MEETING_DURATION_MINUTES } from './Meeting.js';
+import {
+  Meeting,
+  meetingTimeSlot,
+  MEETING_DURATION_MINUTES,
+  InvalidScheduleError,
+  OrganizerCannotDeclineError,
+} from './Meeting.js';
 
 // Testes do comportamento do agregado (Meeting.js) — construídos com `new Meeting(...)`,
 // sem qualquer ligação à base de dados: instanciar um documento e chamar os seus métodos
@@ -135,7 +141,8 @@ test('timeSlot: uma reunião ocupa 1h a partir da hora de início', () => {
   const slot = meeting.timeSlot();
 
   assert.equal(MEETING_DURATION_MINUTES, 60);
-  assert.deepEqual(slot, { start: new Date('2026-09-10T09:00'), end: new Date('2026-09-10T10:00') });
+  assert.deepEqual(slot.start, new Date('2026-09-10T09:00'));
+  assert.deepEqual(slot.end, new Date('2026-09-10T10:00'));
 });
 
 test('meetingTimeSlot: dá o mesmo bloco de tempo antes de a reunião existir (usado ao criar)', () => {
@@ -143,4 +150,50 @@ test('meetingTimeSlot: dá o mesmo bloco de tempo antes de a reunião existir (u
   const meeting = makeMeeting({ organizerId, participants: [{ userId: organizerId, status: 'accepted' }] });
 
   assert.deepEqual(meetingTimeSlot({ date: '2026-09-10', startTime: '09:00' }), meeting.timeSlot());
+});
+
+test('meetingTimeSlot: rejeita data ou hora que não estão no formato YYYY-MM-DD / HH:mm', () => {
+  const invalid = [
+    { date: 'amanhã', startTime: '10:00' },
+    { date: '2026-09-10', startTime: '10h' },
+    { date: '10/09/2026', startTime: '10:00' },
+    { date: '2026-09-10', startTime: '9:00' },
+    { date: '', startTime: '' },
+    { date: undefined, startTime: undefined },
+  ];
+  for (const schedule of invalid) {
+    assert.throws(() => meetingTimeSlot(schedule), InvalidScheduleError, JSON.stringify(schedule));
+  }
+});
+
+test('meetingTimeSlot: rejeita datas e horas que não existem (o Date do JS corrigia-as em silêncio)', () => {
+  const invalid = [
+    { date: '2026-02-30', startTime: '10:00' }, // viraria 2 de março
+    { date: '2026-13-01', startTime: '10:00' },
+    { date: '2026-09-10', startTime: '24:00' }, // viraria 00:00 do dia seguinte
+    { date: '2026-09-10', startTime: '10:60' },
+  ];
+  for (const schedule of invalid) {
+    assert.throws(() => meetingTimeSlot(schedule), InvalidScheduleError, JSON.stringify(schedule));
+  }
+});
+
+test('meetingTimeSlot: aceita datas válidas, incluindo 29 de fevereiro em ano bissexto e 23:59', () => {
+  assert.doesNotThrow(() => meetingTimeSlot({ date: '2028-02-29', startTime: '23:59' }));
+  assert.throws(() => meetingTimeSlot({ date: '2027-02-29', startTime: '10:00' }), InvalidScheduleError);
+});
+
+test('respondToInvite: o organizador não pode recusar a própria reunião', () => {
+  const organizerId = new mongoose.Types.ObjectId();
+  const meeting = makeMeeting({ organizerId, participants: [{ userId: organizerId, status: 'accepted' }] });
+
+  assert.throws(() => meeting.respondToInvite(String(organizerId), 'declined'), OrganizerCannotDeclineError);
+  assert.equal(meeting.findParticipant(String(organizerId))?.status, 'accepted');
+});
+
+test('respondToInvite: o organizador pode voltar a aceitar (não muda nada)', () => {
+  const organizerId = new mongoose.Types.ObjectId();
+  const meeting = makeMeeting({ organizerId, participants: [{ userId: organizerId, status: 'accepted' }] });
+
+  assert.equal(meeting.respondToInvite(String(organizerId), 'accepted')?.status, 'accepted');
 });

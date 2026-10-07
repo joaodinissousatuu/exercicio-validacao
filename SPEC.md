@@ -306,8 +306,9 @@ Resposta `200`: `Meeting[]`, cada um:
 ### `POST /meetings`
 Pedido: `{ "title", "description", "date", "startTime", "participantIds": string[] }`
 Resposta `201`: um `Meeting` (forma igual à de `GET /meetings`, sem `hasConflict`).
-Erros: `400` (campo obrigatório em falta, ou data/hora no passado), `409` (conflito com reunião
-já aceite do organizador).
+Erros: `400` (campo obrigatório em falta, data/hora no passado, ou data/hora inválida — formato
+diferente de `YYYY-MM-DD`/`HH:mm`, ou uma data que não existe, como 30 de fevereiro), `409`
+(conflito com a agenda do organizador).
 
 ### `GET /meetings/:id`
 Resposta `200`: como acima, mas `organizerId` e `participants[].userId` vêm **populados** —
@@ -318,8 +319,9 @@ Erros: `404` (reunião não existe), `403` (utilizador atual não é organizador
 ### `PATCH /meetings/:id/invites/:userId`
 Pedido: `{ "status": "accepted" | "declined" }`
 Resposta `200`: o `Meeting` atualizado (forma não populada).
-Erros: `400` (`status` inválido), `403` (a responder por outro utilizador), `404` (reunião ou
-convite não encontrado), `409` (aceitar entraria em conflito de horário).
+Erros: `400` (`status` inválido), `403` (a responder por outro utilizador, ou o organizador a
+recusar a própria reunião), `404` (reunião ou convite não encontrado), `409` (aceitar entraria
+em conflito de horário, ou outra pessoa alterou a reunião ao mesmo tempo — repetir o pedido).
 
 ### Todos os endpoints
 Header obrigatório: `X-User-Id`. Em falta ou inválido → `401`, corpo `{ "error": "string" }` —
@@ -419,3 +421,77 @@ real (com repositórios em memória) no código antes e depois desta secção, c
 listar com `hasConflict`, aceitar com conflito (`409`), aceitar sem conflito, voltar a aceitar um
 convite já aceite, criar com conflito, criar sem conflito, e criar no passado (`400`). As
 respostas foram iguais nos dois casos.
+
+## 17. Três bugs da Parte II: Value Object, invariante do agregado, concorrência no Repositório
+
+**Decisão:** corrigir os três bugs encontrados ao comparar o projeto com a Parte II do livro do
+Evans (os blocos de construção), usando o padrão que faltava em cada caso.
+
+**Porquê:** ao contrário das secções 10, 12, 14 e 16, estes não eram lacunas de vocabulário ou
+de organização — eram comportamentos errados, reproduzíveis com um pedido HTTP. Os três foram
+reproduzidos primeiro (testes e pedidos à API com MongoDB real) e só depois corrigidos.
+
+### Bug 1 — data/hora inválida contornava as regras de negócio → Value Object
+
+**O que acontecia:** `POST /meetings` com `date: "amanhã"` criava a reunião (`201`). O `Date` do
+JavaScript devolve uma data inválida para texto que não reconhece, e qualquer comparação com uma
+data inválida dá `false` — por isso "não pode estar no passado" passava e o conflito de horário
+**nunca** era detetado. O `Date` também corrige datas inexistentes em silêncio: `2026-02-30`
+passava a 2 de março, e `24:00` passava para o dia seguinte.
+
+**Correção:**
+- `scheduling/overlap.js` — `TimeSlot` passa de um objeto literal a uma classe Value Object:
+  imutável (`Object.freeze`), e o construtor recusa datas inválidas e blocos em que o fim não é
+  depois do início. Nenhum bloco de tempo inválido chega a `overlap()`.
+- `meetings/Meeting.js` — `meetingTimeSlot()` valida o formato (`YYYY-MM-DD`, `HH:mm` entre
+  `00:00` e `23:59`) e confirma que a data existe no calendário, lançando `InvalidScheduleError`.
+- `POST /meetings` responde `400` com a mensagem do erro.
+
+### Bug 2 — respostas em simultâneo apagavam-se → concorrência otimista no Repositório
+
+**O que acontecia:** `meetingRepository.save()` gravava a lista inteira de `participants`. Se duas
+pessoas respondessem ao mesmo tempo a convites da mesma reunião, cada uma lia a lista antes da
+outra gravar, e a segunda gravação apagava a primeira. Reproduzido com MongoDB real: em 30 rondas
+de respostas simultâneas, **as 30** perderam uma resposta — e a API tinha respondido `200` às duas.
+
+**Correção:** controlo de concorrência otimista (*optimistic locking*), o mecanismo que Evans
+associa à fronteira do agregado. O repositório guarda a versão (`__v`) com que leu cada reunião,
+e `save()` só grava se o documento ainda estiver nessa versão (incrementando-a); senão lança
+`ConcurrentModificationError`, e `PATCH /invites` responde `409` a pedir para repetir. A versão
+fica num `WeakMap` dentro do repositório, não no `Meeting`: é um detalhe de persistência, o
+agregado não precisa de o conhecer, e não aparece nas respostas da API. Depois da correção, nas
+mesmas 30 rondas: nenhuma resposta confirmada com `200` se perdeu; a que chega em segundo
+recebe `409`.
+
+**Fora do âmbito:** a corrida *entre* agregados — a mesma pessoa a aceitar, ao mesmo tempo, dois
+convites de reuniões diferentes que se sobrepõem. Cada reunião é gravada com a sua versão, mas a
+verificação de conflito lê outras reuniões, e nada impede as duas verificações de passarem antes
+de qualquer gravação. Resolver isso exige uma decisão de modelo (por exemplo, uma `Agenda` por
+utilizador como agregado próprio), não uma correção local.
+
+### Bug 3 — o organizador podia recusar a própria reunião → invariante no agregado
+
+**O que acontecia:** a secção 5 diz que o organizador está sempre aceite, mas
+`respondToInvite(organizador, 'declined')` era aceite (`200`), deixando uma reunião cujo
+organizador a tinha recusado.
+
+**Correção:** `Meeting.respondToInvite()` passa a proteger esta invariante e lança
+`OrganizerCannotDeclineError`; `PATCH /invites` responde `403`. O frontend nunca oferecia esta
+ação (o convite do organizador nunca está pendente), por isso só se chegava a ela pela API.
+
+**Testes:** 28/28 (antes 21) — 5 novos em `Meeting.test.js` (formatos inválidos, datas que não
+existem, ano bissexto, organizador a recusar, organizador a voltar a aceitar) e 2 em
+`overlap.test.js` (o `TimeSlot` recusa valores inválidos e é imutável). O bug 2 depende da base
+de dados, por isso foi verificado com MongoDB real fora da suite (ainda não há testes de
+integração no projeto).
+
+**Sem mudança para o uso normal:** o mesmo cenário de ponta a ponta da secção 16 (12 pedidos,
+MongoDB real, `seed.js` e `server.js` verdadeiros) dá respostas idênticas antes e depois. As
+únicas respostas novas são as dos três casos acima (`400`, `409` por concorrência, `403`),
+documentadas na secção 13.
+
+**A ter em conta:** uma reunião gravada antes desta correção com data/hora inválida (só possível
+chamando a API diretamente — o formulário do frontend usa campos `date`/`time`) faria agora
+`GET /meetings` falhar com `500` para quem a tem, porque o seu bloco de tempo já não se consegue
+construir. O `seed.js` apaga todas as reuniões, por isso uma base de dados criada a partir dele
+não tem este problema.

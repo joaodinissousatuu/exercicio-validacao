@@ -97,7 +97,7 @@ Cobre os três casos possíveis — sem sobreposição, sobreposição total e s
 O backend aplica os padrões táticos do DDD proporcionais à escala do projeto (entidade, objeto
 de valor, agregado, serviço de domínio, repositório), organizado em três **domínios de
 negócio** — `users/`, `meetings/` e `scheduling/` — em vez de por camada técnica (decisão
-detalhada em `SPEC.md`, secções 8 a 16; o histórico das duas rondas de revisão que levaram a
+detalhada em `SPEC.md`, secções 8 a 17; o histórico das duas rondas de revisão que levaram a
 esta estrutura está em `DOMAIN_MIGRATION.md`). `scheduling/` é o Core Subdomain do projeto (a
 regra de negócio principal do enunciado); `meetings/` é Supporting; `users/` é Generic — ver
 `SPEC.md` §10 para a classificação completa e para a razão de as rotas serem chamadas Serviço
@@ -137,7 +137,7 @@ código estão em `GLOSSARY.md`, junto com as assunções que ainda precisam de 
 um especialista do domínio.
 
 O contrato da API não mudou com esta reestruturação — mesmos URLs, métodos e formas de
-resposta; verificado com os testes automáticos (hoje 21/21 a passar, incluindo
+resposta; verificado com os testes automáticos (hoje 28/28 a passar, incluindo
 `meetings/Meeting.test.js`, sem base de dados) e testes manuais a todos os endpoints.
 
 ### `hasConflict` calculado no backend

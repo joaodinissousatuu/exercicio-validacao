@@ -20,7 +20,7 @@
 | **Responder a um convite** | `respondToInvite(userId, status)` | `meetings/` | Aceitar ou recusar. Só o próprio participante pode responder ao seu convite. |
 | **Duração da reunião** | `MEETING_DURATION_MINUTES` | `meetings/` | Fixa: 1 hora a partir da hora de início. Regra de Meetings, não de Scheduling. |
 | **Compromisso** | *(sem identificador próprio)* | `scheduling/` | Qualquer coisa que ocupa um bloco de tempo na agenda de alguém. Hoje, só reuniões aceites — o Scheduling não sabe disso, só vê o bloco de tempo. |
-| **Bloco de tempo** | `TimeSlot` (`{ start, end }`), `Meeting.timeSlot()` | `scheduling/` | O período que um compromisso ocupa, de início (inclusive) a fim (exclusive). |
+| **Bloco de tempo** | `TimeSlot`, `Meeting.timeSlot()` | `scheduling/` | O período que um compromisso ocupa, de início (inclusive) a fim (exclusive). Value Object: imutável e sempre válido (o fim é depois do início). |
 | **Agenda** | `agenda`, `findAgendaOf(userId)` | `meetings/` → `scheduling/` | As reuniões que um utilizador **já aceitou**. Convites pendentes ou recusados não fazem parte da agenda. |
 | **Conflito de horário** | `hasConflict(candidate, agenda)`, `overlap(a, b)` | `scheduling/` | Quando o bloco de tempo de um compromisso candidato se sobrepõe a algum bloco da agenda. Blocos que só se tocam no limite (um acaba quando o outro começa) **não** estão em conflito. |
 
@@ -47,7 +47,7 @@ respondeu) e ajusta o código.
 | 1 | As reuniões têm sempre 1 hora? Há reuniões de 30 min ou de 2 h? | Sempre 1 hora. | `meetings/Meeting.js` → `MEETING_DURATION_MINUTES` |
 | 2 | Duas reuniões seguidas (10h–11h e 11h–12h) estão em conflito? | Não estão. | `scheduling/overlap.js` → `overlap()` |
 | 3 | Um convite pendente deve "reservar" o tempo na agenda? | Não. Só convites aceites contam. | `meetings/meetingRepository.js` → `findAgendaOf()` |
-| 4 | O organizador pode recusar a própria reunião? E o que acontece à reunião se o fizer? | Fica sempre aceite, mas o código ainda não o garante (lacuna da Parte II). | `meetings/Meeting.js` → `respondToInvite()` |
+| 4 | O organizador pode recusar a própria reunião? Se não, deve poder cancelá-la? | Não pode: fica sempre aceite, e o agregado garante-o (SPEC §17). Cancelar não existe. | `meetings/Meeting.js` → `respondToInvite()` |
 | 5 | Em que fuso horário estão a data e a hora de uma reunião? Do organizador, de cada participante, ou um fuso fixo? | Implicitamente, o fuso do servidor. | `meetings/Meeting.js` → `meetingTimeSlot()` |
 | 6 | Um participante pode mudar de ideias (aceitar, depois recusar, depois aceitar outra vez)? Até quando? | Sim, sem limite. | `meetings/routes.js` → `PATCH /:id/invites/:userId` |
 | 7 | Quando um convite fica em conflito com a agenda, o sistema deve só impedir, ou também sugerir alternativas? | Só impede (`409`) e avisa na lista (`hasConflict`). | `meetings/routes.js` |
