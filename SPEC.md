@@ -717,3 +717,41 @@ inexistente, ids repetidos ou com formato inválido, campo em falta, quem não f
 responder, responder por outra pessoa, estado inválido, reunião inexistente, mudar de ideias, acesso
 negado, pedido sem `X-User-Id`). O teste de concorrência da §17 continua sem respostas perdidas,
 e o frontend, verificado no Chromium, mostra o mesmo que antes, sem erros na consola.
+
+## 20. Testes de integração com MongoDB real
+
+**Decisão:** acrescentar ao repositório uma suite de testes de integração
+(`npm run test:integration`) que corre a app Express verdadeira contra um MongoDB verdadeiro,
+temporário e em memória (`mongodb-memory-server-core`). Até aqui só a lógica pura tinha testes
+automáticos; as verificações com base de dados das secções 16-19 foram feitas à mão, com scripts
+que não ficaram no repositório.
+
+**Porquê:** os testes unitários não conseguem apanhar o que depende da base de dados: as queries do
+Mongoose (por exemplo, a agenda só contar convites aceites), a tradução documento ↔ agregado,
+o `.populate()` do detalhe, a concorrência otimista do `save()` (§17) e a tradução dos erros de
+domínio para HTTP. Para confirmar que os testes servem para alguma coisa, foram reintroduzidos de
+propósito cinco bugs, um de cada vez, e a suite falhou em todos: o `save()` sem controlo de versão,
+a agenda a contar convites pendentes, a criação sem verificar a agenda do organizador, o detalhe
+sem `.populate()`, e um conflito traduzido para `400` em vez de `409`.
+
+**O que existe** (em `backend/test/integration/`, fora de `src/` para o `npm test` continuar rápido
+e sem base de dados):
+- `helpers.js` — arranca o MongoDB temporário e a app numa porta livre, limpa a base de dados antes
+  de cada teste, e dá funções curtas para criar utilizadores e reuniões e fazer pedidos.
+- `meetings.api.test.js` — a API pelas regras de negócio: lista com `myInviteStatus` e
+  `hasConflict`, criar (com e sem conflito, no limite, convidados repetidos, erros `400`), detalhe
+  populado e acesso negado, aceitar e recusar (conflito, voltar a aceitar, mudar de ideias, erros
+  `403`/`404`/`400`), identificação por `X-User-Id`, e pesquisa de utilizadores.
+- `meetingRepository.test.js` — a concorrência otimista de forma determinística (duas leituras da
+  mesma reunião e duas gravações: a segunda falha em vez de apagar a primeira, sem depender de
+  pedidos em simultâneo), documentos sem `__v`, a query da agenda, e ida e volta
+  agregado → documento → agregado.
+- `seed.test.js` — corre o `seed.js` verdadeiro, como o README manda, e confirma que o id impresso
+  funciona em `X-User-Id` e que o cenário de demonstração (um conflito, um convite livre) fica pronto.
+
+**Escolha da dependência:** `mongodb-memory-server-core` em vez de `mongodb-memory-server`. Fazem o
+mesmo, mas o segundo descarrega o MongoDB (~120 MB) em cada `npm install`, mesmo para quem nunca
+corre estes testes; o `-core` só o descarrega na primeira vez que a suite corre.
+
+**Resultado:** 25 testes de integração, ~4 segundos depois do primeiro download. `npm test`
+continua com os mesmos 47 testes unitários.
