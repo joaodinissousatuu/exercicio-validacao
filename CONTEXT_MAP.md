@@ -8,7 +8,7 @@
 Este repositório tem **um só Bounded Context**: *Gestão de Reuniões*, o backend. Lá dentro há
 **um** modelo e **uma** linguagem (`GLOSSARY.md`). `users/`, `meetings/` e `scheduling/` são
 **Módulos** desse contexto, não contextos separados: partilham a base de dados, referenciam-se
-diretamente (`Meeting` guarda ids de `User`, e `.populate()` lê a coleção de utilizadores) e cada
+diretamente (`Meeting` guarda ids de `User`, e o detalhe junta reuniões e utilizadores) e cada
 termo tem um só significado em todos eles. Até à SPEC §19 a documentação chamava-lhes Bounded
 Contexts. Essa classificação estava errada: Evans define um Bounded Context pela fronteira de
 validade de um modelo, e aqui não há dois modelos.
@@ -78,11 +78,11 @@ Não são relações de Context Map, porque é tudo o mesmo modelo, mas ficam re
 | De | Para | Como |
 |---|---|---|
 | `meetings/` | `scheduling/` | Constrói `TimeSlot`s e `Agenda`s, e pergunta à agenda se há conflito. `scheduling/` não conhece reuniões. |
-| `meetings/` | `users/` | Guarda ids de `User`. `meetingRepository.findByIdWithDetails()` usa `.populate()` para ler `name`/`username` (a costura documentada em `DOMAIN_MIGRATION.md`). |
+| `meetings/` | `users/` | Guarda ids de `User`. O detalhe de uma reunião junta os dois em `meetingDto.js`: a rota pede as reuniões a `meetingRepository` e os utilizadores a `userRepository`. Até à SPEC §25 era um `.populate()`, que fazia o módulo de reuniões ler a coleção de utilizadores. |
 | `middleware/` | `users/` | `currentUser.js` usa `userRepository` para validar o utilizador do pedido. |
 
 **Quando é que isto passaria a ser mais do que um contexto:** se `users/` crescesse para um sistema
 de contas com regras próprias (perfis, permissões, equipas), com outra equipa e outro significado
-de "utilizador", então sim, seriam dois modelos. O `.populate()` passaria a ser uma tradução
-explícita (um read model ou uma Anticorruption Layer), e esta tabela passaria a ser uma relação de
-Context Map.
+de "utilizador", então sim, seriam dois modelos. A junção em `meetingDto.js` passaria a ser uma
+tradução explícita (uma Anticorruption Layer sobre o modelo de contas), e esta tabela passaria a ser
+uma relação de Context Map. Desde a SPEC §25 essa junção já está num só sítio, fora do domínio.

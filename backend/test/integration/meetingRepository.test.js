@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import { meetingRepository, ConcurrentModificationError } from '../../src/meetings/meetingRepository.js';
 import { meetingTimeSlot } from '../../src/meetings/Meeting.js';
 import { scheduleMeeting } from '../../src/meetings/commitmentPolicy.js';
+import { toMeetingDto } from '../../src/meetings/meetingDto.js';
 import { Agenda } from '../../src/scheduling/Agenda.js';
 import { MeetingModel } from '../../src/meetings/MeetingModel.js';
 import { useTestServer, createUsers, insertMeeting, daysFromNow } from './helpers.js';
@@ -99,20 +100,13 @@ describe('create() e leitura', () => {
 
     assert.match(created._id, /^[0-9a-f]{24}$/);
     assert.deepEqual(
-      read.toJSON(),
-      { ...meeting.toJSON(), _id: created._id },
+      toMeetingDto(read),
+      { ...toMeetingDto(meeting), _id: created._id },
     );
   });
 
-  test('findByIdWithDetails popula organizador e participantes, e o agregado continua a funcionar', async () => {
-    const id = await insertMeeting({ date: DAY, startTime: '09:00', organizerId: ana, participants: { [ana]: 'accepted', [carla]: 'pending' } });
-
-    const meeting = await meetingRepository.findByIdWithDetails(id);
-
-    assert.ok(typeof meeting.organizerId === 'object', 'organizerId devia vir populado');
-    assert.equal(meeting.organizerId.username, 'ana');
-    assert.equal(meeting.isOrganizer(ana), true);
-    assert.equal(meeting.inviteStatusOf(carla), 'pending');
-    assert.equal(meeting.hasAccess(diogo), false);
+  test('findById com um id de formato inválido devolve null (o formato é detalhe do repositório)', async () => {
+    assert.equal(await meetingRepository.findById('lixo'), null);
+    assert.equal(await meetingRepository.findById('e'.repeat(24)), null);
   });
 });

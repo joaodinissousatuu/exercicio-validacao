@@ -31,18 +31,6 @@ export class ConcurrentModificationError extends Error {
  */
 const loadedVersions = new WeakMap();
 
-/**
- * Uma referência a User vem crua (ObjectId/string) ou populada
- * ({ _id, name, username }, via .populate()) — mantém-se a mesma forma que
- * a rota já esperava antes desta separação, só que agora explícita aqui.
- */
-function refToDomain(value) {
-  if (value && typeof value === 'object' && 'username' in value) {
-    return { _id: String(value._id), name: value.name, username: value.username };
-  }
-  return String(value);
-}
-
 /** @param {InstanceType<typeof import('./MeetingModel.js').MeetingModel>} doc - documento Mongoose devolvido por uma query */
 function toDomain(doc) {
   const meeting = new Meeting({
@@ -51,8 +39,8 @@ function toDomain(doc) {
     description: doc.description,
     date: doc.date,
     startTime: doc.startTime,
-    organizerId: refToDomain(doc.organizerId),
-    participants: doc.participants.map((p) => ({ userId: refToDomain(p.userId), status: p.status })),
+    organizerId: String(doc.organizerId),
+    participants: doc.participants.map((p) => ({ userId: String(p.userId), status: p.status })),
   });
   loadedVersions.set(meeting, doc.__v ?? 0);
   return meeting;
@@ -90,17 +78,15 @@ async function findAgendaOf(userId, excludeMeetingId) {
   return agendaOf(docs.map(toDomain));
 }
 
-/** @param {string} id */
+/**
+ * A reunião com este id, ou null se não existir. Um id com formato inválido também dá
+ * null: o formato dos ids (ObjectId do MongoDB) é um detalhe deste repositório, não algo
+ * que as rotas tenham de validar (SPEC.md §25).
+ * @param {string} id
+ */
 async function findById(id) {
+  if (!isValidId(id)) return null;
   const doc = await MeetingModel.findById(id);
-  return doc ? toDomain(doc) : null;
-}
-
-/** @param {string} id */
-async function findByIdWithDetails(id) {
-  const doc = await MeetingModel.findById(id)
-    .populate('organizerId', 'name username')
-    .populate('participants.userId', 'name username');
   return doc ? toDomain(doc) : null;
 }
 
@@ -169,11 +155,9 @@ async function findInvalid() {
 }
 
 export const meetingRepository = {
-  isValidId,
   findForUser,
   findAgendaOf,
   findById,
-  findByIdWithDetails,
   create,
   save,
   findInvalid,
