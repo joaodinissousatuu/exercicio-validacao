@@ -284,8 +284,15 @@ test('agendaOf: a agenda das reuniões aceites deteta conflito com o bloco de te
   const organizerId = new mongoose.Types.ObjectId();
   const participants = [{ userId: organizerId, status: 'accepted' }];
   const accepted = makeMeeting({ organizerId, participants }); // 2026-09-10, 09:00-10:00
-  const candidate = new Meeting({ ...accepted.toJSON(), startTime: '09:30' });
-  const later = new Meeting({ ...accepted.toJSON(), startTime: '10:00' });
+  const sameDay = {
+    title: 'T',
+    description: 'D',
+    date: '2026-09-10',
+    organizerId: String(organizerId),
+    participants: [{ userId: String(organizerId), status: /** @type {const} */ ('accepted') }],
+  };
+  const candidate = new Meeting({ ...sameDay, startTime: '09:30' });
+  const later = new Meeting({ ...sameDay, startTime: '10:00' });
 
   const agenda = agendaOf([accepted]);
 
@@ -340,37 +347,4 @@ test('encapsulamento: os campos da reunião não podem ser reatribuídos de fora
     meeting.date = 'amanhã';
   }, TypeError);
   assert.equal(meeting.date, '2026-09-10');
-});
-
-test('toJSON: a forma enviada pela API não muda (campos, ordem e valores)', () => {
-  const organizerId = String(new mongoose.Types.ObjectId());
-  const carlaId = String(new mongoose.Types.ObjectId());
-  const meeting = new Meeting({
-    _id: 'm1',
-    title: 'Reunião de teste',
-    description: 'Descrição',
-    date: '2026-09-10',
-    startTime: '09:00',
-    organizerId,
-    participants: [
-      { userId: organizerId, status: 'accepted' },
-      { userId: carlaId, status: 'pending' },
-    ],
-  });
-
-  assert.equal(
-    JSON.stringify(meeting),
-    JSON.stringify({
-      _id: 'm1',
-      title: 'Reunião de teste',
-      description: 'Descrição',
-      date: '2026-09-10',
-      startTime: '09:00',
-      organizerId,
-      participants: [
-        { userId: organizerId, status: 'accepted' },
-        { userId: carlaId, status: 'pending' },
-      ],
-    }),
-  );
 });

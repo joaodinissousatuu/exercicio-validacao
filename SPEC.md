@@ -319,21 +319,23 @@ Resposta `200`: `Meeting[]`, cada um:
 ### `POST /meetings`
 Pedido: `{ "title", "description", "date", "startTime", "participantIds": string[] }`
 Resposta `201`: um `Meeting` (forma igual à de `GET /meetings`, sem `hasConflict`).
-Erros: `400` (campo obrigatório em falta, data/hora no passado, ou data/hora inválida — formato
-diferente de `YYYY-MM-DD`/`HH:mm`, ou uma data que não existe, como 30 de fevereiro), `409`
-(conflito com a agenda do organizador).
+Erros: `400` (campo obrigatório em falta, data/hora no passado, data/hora inválida — formato
+diferente de `YYYY-MM-DD`/`HH:mm`, ou uma data que não existe, como 30 de fevereiro —, ou um
+convidado que não existe, incluindo um id com formato inválido, desde a §25), `409` (conflito com
+a agenda do organizador).
 
 ### `GET /meetings/:id`
-Resposta `200`: como acima, mas `organizerId` e `participants[].userId` vêm **populados** —
-`{ "_id", "name", "username" }` em vez de string (ver a costura documentada na secção 10/
-`DOMAIN_MIGRATION.md`).
+Resposta `200`: como acima, mas `organizerId` e `participants[].userId` vêm com o utilizador —
+`{ "_id", "name", "username" }` em vez de string (`null` se o utilizador já não existir). Desde a
+§25, a rota junta reuniões e utilizadores em `meetingDto.js`; antes era um `.populate()`.
 Erros: `404` (reunião não existe), `403` (utilizador atual não é organizador nem participante).
 
 ### `PATCH /meetings/:id/invites/:userId`
 Pedido: `{ "status": "accepted" | "declined" }`
 Resposta `200`: o `Meeting` atualizado (forma não populada).
-Erros: `400` (`status` inválido), `403` (a responder por outro utilizador, ou o organizador a
-recusar a própria reunião), `404` (reunião ou convite não encontrado), `409` (aceitar entraria
+Erros: `400` (`status` inválido), `403` (a responder por outro utilizador — incluindo um
+`:userId` com formato inválido, desde a §25 —, ou o organizador a recusar a própria reunião),
+`404` (reunião ou convite não encontrado), `409` (aceitar entraria
 em conflito de horário, ou outra pessoa alterou a reunião ao mesmo tempo — repetir o pedido).
 
 ### Todos os endpoints
@@ -908,3 +910,64 @@ ignorado, como uma pesquisa sem termo. Foi reproduzido primeiro com um teste de 
 introduzido de propósito (`req.currentUser.nome`) é apanhado. Testes: 52 unitários, 31 de
 integração (+1, o do `q`) e 9 ponta a ponta, todos a passar. O CI corre a verificação de tipos antes
 dos testes do backend.
+
+## 25. A API e o Mongoose deixam de chegar ao domínio
+
+**Decisão:** fechar as duas lacunas da Parte II que ficaram em aberto. A API devolvia o agregado tal
+como estava; e detalhes do Mongoose chegavam ao domínio e às rotas (`.populate()`, utilizadores
+populados dentro do `Meeting`, e `isValidId` exposto pelos repositórios).
+
+### 1. DTOs explícitos: a Published Language passa a estar no código
+
+Até aqui a resposta da API era o próprio `Meeting` serializado (primeiro pelos campos públicos,
+depois, desde a §21, pelo `toJSON()`). Qualquer mudança no agregado mudava o contrato sem ninguém
+dar por isso.
+
+- `meetings/meetingDto.js`: `toMeetingDto`, `toMeetingListItemDto` (com `myInviteStatus` e
+  `hasConflict`) e `toMeetingDetailDto` (com nomes e usernames). `users/userDto.js`: `toUserDto`.
+- Todas as respostas passam por eles. O `Meeting` perde o `toJSON()`: o domínio não sabe como é
+  enviado pela rede.
+- `meetingDto.test.js` fixa a forma das respostas (campos, ordem e valores).
+
+### 2. Sem `.populate()`: o detalhe é composto pelo Serviço de Aplicação
+
+`meetingRepository.findByIdWithDetails()` usava `.populate()` para trazer `name`/`username` dos
+utilizadores. Isso tinha três custos: o módulo de reuniões lia a coleção de utilizadores; o `Meeting`
+tinha de aceitar referências que eram *ou* ids *ou* utilizadores (`idOf()`, o tipo `UserRef`); e o
+"agregado" devolvido era, na prática, um read model.
+
+Agora, `GET /meetings/:id` carrega a reunião (`meetingRepository.findById`), verifica o acesso,
+carrega os utilizadores (`userRepository.findByIds`) e junta os dois em `toMeetingDetailDto`. O
+`Meeting` guarda sempre e só ids, por isso `idOf()`, `UserRef` e `findByIdWithDetails` desaparecem.
+Custa mais uma consulta à base de dados no detalhe, um preço pequeno por manter os módulos separados
+e o agregado simples.
+
+### 3. O formato dos ids fica dentro dos repositórios
+
+Os repositórios exportavam `isValidId` (que diz se um texto é um ObjectId do MongoDB), e as rotas e
+o middleware usavam-no. Agora `findById` devolve `null` para um id com formato inválido, e
+`findByIds` ignora-os; ninguém fora dos repositórios sabe que os ids são ObjectIds.
+
+**Isto muda as respostas em cinco casos, todos com ids mal formados** (o frontend nunca os envia).
+Foram comparados com o código anterior, com MongoDB real:
+
+| Pedido | Antes | Depois |
+|---|---|---|
+| `POST /meetings` com um convidado de id mal formado | `201`, convidado ignorado em silêncio | `400` "Um ou mais participantes não existem." |
+| `X-User-Id` mal formado | `401` "em falta ou inválido" | `401` "não existe" (mesmo código) |
+| `PATCH` com `:userId` mal formado | `404` | `403` "Só podes responder ao teu próprio convite." |
+| `PATCH` com `:id` mal formado | `404` "Reunião ou utilizador não encontrado." | `404` "Reunião não encontrada." |
+| `PATCH` com `:id` mal formado e `status` inválido | `404` | `400` (o `status` é verificado primeiro) |
+
+O primeiro é uma melhoria: ignorar um convidado inválido escondia o erro de quem chamava. Os outros
+mantêm um código coerente com o que o pedido tem de errado. A secção 13 foi atualizada.
+
+**Sem mudança em tudo o resto:** com MongoDB real, o JSON de seis respostas (lista, os **três
+detalhes**, que deixaram de usar o `.populate()`, aceitar e criar) é igual byte a byte ao do código
+anterior, tal como os cenários de ponta a ponta e as reproduções de bugs das secções 16-19. Os 9
+testes ponta a ponta do frontend passam sem alterações.
+
+**Testes:** 56 unitários (+5 dos DTOs, −1 do `toJSON`), 32 de integração (o teste do id mal
+formado passa a esperar `400`, e o do `findByIdWithDetails` dá lugar a um de `findById` com id mal
+formado) e 9 ponta a ponta. `npm run typecheck` sem erros. Foi a verificação de tipos que apontou os
+sítios que ainda usavam o `toJSON()` removido.

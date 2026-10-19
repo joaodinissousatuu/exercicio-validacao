@@ -3,6 +3,7 @@ import { meetingRepository, ConcurrentModificationError } from './meetingReposit
 import { userRepository } from '../users/userRepository.js';
 import { agendaOf, InvalidScheduleError, NotInvitedError, OrganizerCannotDeclineError } from './Meeting.js';
 import { isInviteResponse } from './InviteStatus.js';
+import { toMeetingDto, toMeetingListItemDto, toMeetingDetailDto } from './meetingDto.js';
 import {
   scheduleMeeting,
   respondToInvite,
@@ -14,6 +15,8 @@ import {
 // Serviço de Aplicação (SPEC.md §10): lê o pedido HTTP, vai buscar o que a política
 // precisa aos repositórios, chama a política de compromissos (commitmentPolicy.js — o
 // Core Domain, §19) e traduz o resultado para HTTP. Não decide nenhuma regra de negócio.
+// As respostas passam sempre pelos DTOs de meetingDto.js (a Published Language, §13/§25):
+// nunca se envia o agregado tal como está.
 
 export const meetingsRouter = express.Router();
 
@@ -51,12 +54,9 @@ meetingsRouter.get('/', async (req, res) => {
   // Uma reunião pendente nunca está na agenda, por isso não há nada a excluir.
   const agenda = agendaOf(meetings.filter((m) => m.isAcceptedBy(userId)));
 
-  // toJSON(): o spread de um Meeting não copia `participants` (é privado, SPEC §21).
-  const result = meetings.map((m) => ({
-    ...m.toJSON(),
-    myInviteStatus: m.inviteStatusOf(userId),
-    hasConflict: wouldConflict(m, userId, agenda),
-  }));
+  const result = meetings.map((m) =>
+    toMeetingListItemDto(m, { myInviteStatus: m.inviteStatusOf(userId), hasConflict: wouldConflict(m, userId, agenda) }),
+  );
 
   res.json(result);
 });
@@ -70,10 +70,7 @@ meetingsRouter.post('/', async (req, res) => {
   }
 
   const organizerId = String(req.currentUser._id);
-  // Ids com formato inválido são ignorados (formato de ObjectId é detalhe de infraestrutura).
-  const requestedIds = (Array.isArray(participantIds) ? participantIds : [])
-    .map(String)
-    .filter((id) => userRepository.isValidId(id));
+  const requestedIds = (Array.isArray(participantIds) ? participantIds : []).map(String);
 
   const organizerAgenda = await meetingRepository.findAgendaOf(organizerId);
 
@@ -87,24 +84,19 @@ meetingsRouter.post('/', async (req, res) => {
     return sendDomainError(res, err);
   }
 
+  // Um id que não corresponde a ninguém (incluindo um com formato inválido) é recusado.
   const inviteeIds = meeting.inviteeIds();
   const invitedUsers = await userRepository.findByIds(inviteeIds);
   if (invitedUsers.length !== inviteeIds.length) {
     return res.status(400).json({ error: 'Um ou mais participantes não existem.' });
   }
 
-  res.status(201).json(await meetingRepository.create(meeting));
+  res.status(201).json(toMeetingDto(await meetingRepository.create(meeting)));
 });
 
 // GET /meetings/:id — detalhes, incluindo participantes e estado dos convites.
 meetingsRouter.get('/:id', async (req, res) => {
-  const { id } = req.params;
-  if (!meetingRepository.isValidId(id)) {
-    return res.status(404).json({ error: 'Reunião não encontrada.' });
-  }
-
-  const meeting = await meetingRepository.findByIdWithDetails(id);
-
+  const meeting = await meetingRepository.findById(req.params.id);
   if (!meeting) {
     return res.status(404).json({ error: 'Reunião não encontrada.' });
   }
@@ -113,17 +105,17 @@ meetingsRouter.get('/:id', async (req, res) => {
     return res.status(403).json({ error: 'Sem acesso a esta reunião.' });
   }
 
-  res.json(meeting);
+  // Nomes e usernames para o ecrã de detalhe: o módulo de reuniões não lê a coleção de
+  // utilizadores (antes era um .populate()); o Serviço de Aplicação junta os dois (§25).
+  // O organizador é sempre participante, por isso basta pedir os participantes.
+  const users = await userRepository.findByIds(meeting.participants.map((p) => p.userId));
+  res.json(toMeetingDetailDto(meeting, users));
 });
 
 // PATCH /meetings/:id/invites/:userId — aceitar ou recusar um convite.
 meetingsRouter.patch('/:id/invites/:userId', async (req, res) => {
   const { id, userId } = req.params;
   const { status } = req.body;
-
-  if (!meetingRepository.isValidId(id) || !userRepository.isValidId(userId)) {
-    return res.status(404).json({ error: 'Reunião ou utilizador não encontrado.' });
-  }
 
   if (!isInviteResponse(status)) {
     return res.status(400).json({ error: "status deve ser 'accepted' ou 'declined'." });
@@ -145,5 +137,5 @@ meetingsRouter.patch('/:id/invites/:userId', async (req, res) => {
   } catch (err) {
     return sendDomainError(res, err);
   }
-  res.json(meeting);
+  res.json(toMeetingDto(meeting));
 });

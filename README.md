@@ -169,10 +169,11 @@ infraestrutura como o capítulo 4 do livro do Evans pede.
 - **`middleware/`** — inalterado; fica fora de `users/` porque a sua função é pipeline HTTP, não
   lógica de domínio.
 
-`meetingRepository.findByIdWithDetails()` usa `.populate()` do Mongoose para ir buscar
-`name`/`username` de Users ao mostrar o detalhe de uma reunião — a única dependência direta de
-Meetings sobre dados de Users, mantida por ser proporcional à escala (dois campos) e
-documentada como exceção consciente, não escondida.
+O detalhe de uma reunião mostra nomes e usernames: a rota carrega a reunião
+(`meetingRepository`) e os utilizadores (`userRepository`) e junta-os em `meetingDto.js`. Até à
+`SPEC.md` §25 isto era um `.populate()` do Mongoose, o que fazia o módulo de reuniões ler a coleção
+de utilizadores e o agregado `Meeting` lidar com utilizadores populados. As respostas da API
+passam sempre por DTOs explícitos (`meetingDto.js`, `userDto.js`): o domínio não sabe como é enviado.
 
 Os termos do domínio (agenda, bloco de tempo, convite, etc.) e o identificador de cada um no
 código estão em `GLOSSARY.md`, junto com as assunções que ainda precisam de ser confirmadas por

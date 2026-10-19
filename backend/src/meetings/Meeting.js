@@ -3,14 +3,8 @@ import { Agenda } from '../scheduling/Agenda.js';
 import { InviteStatus, isInviteResponse } from './InviteStatus.js';
 
 /**
- * Referência a um User: o id, ou o utilizador populado (só em
- * meetingRepository.findByIdWithDetails(), para o detalhe mostrar nomes).
- * @typedef {string | { _id: string, name: string, username: string }} UserRef
- */
-
-/**
  * @typedef {Object} Participant
- * @property {UserRef} userId - Referência ao User convidado.
+ * @property {string} userId - Id do User convidado.
  * @property {import('./InviteStatus.js').InviteStatusValue} status - Estado do convite deste participante (ver GLOSSARY.md: o convite não é uma entidade à parte, é este estado).
  */
 
@@ -21,7 +15,7 @@ import { InviteStatus, isInviteResponse } from './InviteStatus.js';
  * @property {string} description - Descrição da reunião.
  * @property {string} date - Data da reunião (formato 'YYYY-MM-DD').
  * @property {string} startTime - Hora de início (formato 'HH:mm'). Duração fixa de 1h, não é campo guardado.
- * @property {UserRef} organizerId - Referência ao User que criou a reunião.
+ * @property {string} organizerId - Id do User que criou a reunião.
  * @property {ReadonlyArray<Participant>} participants - Lista de participantes, inclui o organizador (já aceite). É copiada pelo construtor.
  */
 
@@ -142,18 +136,13 @@ export function agendaOf(acceptedMeetings) {
   return new Agenda(acceptedMeetings.map((m) => m.timeSlot()));
 }
 
-/** Extrai o id de uma referência, populada ou não (string crua ou objeto {_id, name, username}). */
-function idOf(value) {
-  return String(value?._id ?? value);
-}
-
 /**
- * Cópia imutável de um participante. Uma referência populada ({ _id, name, username },
- * um objeto simples) também é copiada e congelada; ids (strings, ObjectId) ficam como estão.
+ * Cópia imutável de um participante. O id do utilizador fica sempre como texto: o
+ * agregado guarda ids, nunca utilizadores (os nomes para o ecrã de detalhe são
+ * juntados fora do domínio, em meetingDto.js — SPEC.md §25).
  */
 function frozenParticipant({ userId, status }) {
-  const isPlainObject = userId !== null && Object.getPrototypeOf(userId) === Object.prototype;
-  return Object.freeze({ userId: isPlainObject ? Object.freeze({ ...userId }) : userId, status });
+  return Object.freeze({ userId: String(userId), status });
 }
 
 export class Meeting {
@@ -167,7 +156,7 @@ export class Meeting {
     this.description = description;
     this.date = date;
     this.startTime = startTime;
-    this.organizerId = organizerId;
+    this.organizerId = String(organizerId);
     this.#participants = Object.freeze(participants.map(frozenParticipant));
     this.#assertInvariants();
     Object.freeze(this);
@@ -178,17 +167,8 @@ export class Meeting {
     return this.#participants;
   }
 
-  /**
-   * Forma enviada pela API (JSON.stringify chama este método). Igual à de antes do
-   * encapsulamento — os campos privados e os getters não seriam serializados sozinhos.
-   */
-  toJSON() {
-    const { _id, title, description, date, startTime, organizerId } = this;
-    return { _id, title, description, date, startTime, organizerId, participants: this.#participants };
-  }
-
   #assertInvariants() {
-    const ids = this.#participants.map((p) => idOf(p.userId));
+    const ids = this.#participants.map((p) => p.userId);
     if (new Set(ids).size !== ids.length) {
       throw new InvalidMeetingError('um utilizador aparece mais do que uma vez nos participantes.');
     }
@@ -196,7 +176,7 @@ export class Meeting {
     if (this.#participants.some((p) => !validStatuses.includes(p.status))) {
       throw new InvalidMeetingError('estado de convite desconhecido.');
     }
-    if (this.inviteStatusOf(idOf(this.organizerId)) !== InviteStatus.ACCEPTED) {
+    if (this.inviteStatusOf(this.organizerId) !== InviteStatus.ACCEPTED) {
       throw new InvalidMeetingError('o organizador tem de ser participante, com o convite aceite.');
     }
   }
@@ -209,12 +189,12 @@ export class Meeting {
   /** @param {string} userId @returns {Readonly<Participant> | null} só de leitura */
   findParticipant(userId) {
     const target = String(userId);
-    return this.#participants.find((p) => idOf(p.userId) === target) ?? null;
+    return this.#participants.find((p) => p.userId === target) ?? null;
   }
 
   /** @param {string} userId */
   isOrganizer(userId) {
-    return idOf(this.organizerId) === String(userId);
+    return this.organizerId === String(userId);
   }
 
   /** Organizador ou participante (convidado), independentemente do estado do convite. @param {string} userId */
@@ -224,7 +204,7 @@ export class Meeting {
 
   /** Ids dos participantes convidados pelo organizador (todos menos ele). @returns {string[]} */
   inviteeIds() {
-    return this.#participants.map((p) => idOf(p.userId)).filter((id) => !this.isOrganizer(id));
+    return this.#participants.map((p) => p.userId).filter((id) => !this.isOrganizer(id));
   }
 
   /**

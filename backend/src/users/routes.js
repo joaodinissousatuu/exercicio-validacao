@@ -1,5 +1,6 @@
 import express from 'express';
 import { userRepository } from './userRepository.js';
+import { toUserDto } from './userDto.js';
 
 export const usersRouter = express.Router();
 
@@ -10,5 +11,5 @@ export const usersRouter = express.Router();
 usersRouter.get('/', async (req, res) => {
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
   const users = await userRepository.search(q);
-  res.json(users);
+  res.json(users.map(toUserDto));
 });

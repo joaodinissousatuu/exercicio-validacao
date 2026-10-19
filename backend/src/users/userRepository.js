@@ -35,20 +35,27 @@ async function search(query) {
   return docs.map(toDomain);
 }
 
-/** @param {string[]} ids */
+/**
+ * Os utilizadores que existem com estes ids. Ids com formato inválido não correspondem a
+ * ninguém e são simplesmente ignorados (o formato é um detalhe deste repositório).
+ * @param {string[]} ids
+ */
 async function findByIds(ids) {
-  const docs = await UserModel.find({ _id: { $in: ids } });
+  const docs = await UserModel.find({ _id: { $in: ids.filter(isValidId) } });
   return docs.map(toDomain);
 }
 
-/** @param {string} id */
+/**
+ * O utilizador com este id, ou null se não existir (incluindo ids com formato inválido).
+ * @param {string} id
+ */
 async function findById(id) {
+  if (!isValidId(id)) return null;
   const doc = await UserModel.findById(id);
   return doc ? toDomain(doc) : null;
 }
 
 export const userRepository = {
-  isValidId,
   search,
   findByIds,
   findById,

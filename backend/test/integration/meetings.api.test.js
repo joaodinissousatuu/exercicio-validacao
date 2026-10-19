@@ -90,14 +90,22 @@ describe('POST /meetings', () => {
     );
   });
 
-  test('ignora convites repetidos, o próprio organizador e ids com formato inválido', async () => {
-    const { status, body } = await as(ana).post('/meetings', newMeeting({ participantIds: [carla, carla, ana, 'lixo'] }));
+  test('ignora convites repetidos e o próprio organizador', async () => {
+    const { status, body } = await as(ana).post('/meetings', newMeeting({ participantIds: [carla, carla, ana] }));
 
     assert.equal(status, 201);
     assert.deepEqual(
       body.participants.map((p) => p.userId),
       [ana, carla],
     );
+  });
+
+  test('um convidado com id de formato inválido é recusado, como um que não existe (SPEC §25)', async () => {
+    const { status, body } = await as(ana).post('/meetings', newMeeting({ participantIds: [carla, 'lixo'] }));
+
+    assert.equal(status, 400);
+    assert.equal(body.error, 'Um ou mais participantes não existem.');
+    assert.equal(await MeetingModel.countDocuments(), 0);
   });
 
   test('409 se não couber na agenda do organizador, e nada é gravado', async () => {
